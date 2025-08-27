@@ -1,0 +1,44 @@
+{
+  "name": "lowlander",
+  "version": "0.1.0",
+  "description": "TypeScript framework for data persistence and (partial) client synchronization.",
+  "type": "module",
+  "main": "./build/server/server.js",
+  "browser": "./build/client/client.js",
+  "types": "./build/server/server.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./server/server.ts",
+      "import": "./build/server/server.js",
+      "types": "./build/server/server.d.ts"
+    },
+    "./client": {
+      "development": "./client/client.ts",
+      "import": "./build/client/client.js",
+      "types": "./build/client/client.d.ts"
+    },
+    "./server": {
+      "bun": "./server/server.ts",
+      "import": "./build/server/server.js",
+      "types": "./build/server/server.d.ts"
+    }
+  },
+  "keywords": [
+    "mobile"
+  ],
+  "scripts": {
+    "build": "tsc -b && cp -rf examples/helloworld/client/assets examples/helloworld/client/index.html build/examples/helloworld/client/",
+    "typecheck": "bun x tsc -b",
+    "clean": "rm -rf build dist"
+  },
+  "dependencies": {
+    "aberdeen": "^1.2.0",
+    "edinburgh": "^0.3.0",
+    "warpsocket": "^0.6.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  },
+  "author": "Frank van Viegen BV",
+  "license": "ISC"
+}
