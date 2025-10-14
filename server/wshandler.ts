@@ -91,7 +91,7 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
         try {
             await E.transact(async () => {
                 let response = await func.apply(api, params);
-                console.log('Called', methodName, 'with', params, '->', response);
+                console.log('Called', methodName, 'with', params, '->', typeof response === 'object' && response ? response.toString() : JSON.stringify(response));
 
                 // Result processing/sending should be within the transaction, as it may involve (lazy) loading models
 

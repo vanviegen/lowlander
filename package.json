@@ -21,6 +21,11 @@
       "bun": "./server/server.ts",
       "import": "./build/server/server.js",
       "types": "./build/server/server.d.ts"
+    },
+    "./server/admin": {
+      "bun": "./server/admin.ts",
+      "import": "./build/server/admin.js",
+      "types": "./build/server/admin.d.ts"
     }
   },
   "keywords": [
@@ -32,9 +37,9 @@
     "clean": "rm -rf build dist"
   },
   "dependencies": {
-    "aberdeen": "^1.2.0",
-    "edinburgh": "^0.3.0",
-    "warpsocket": "^0.6.1"
+    "aberdeen": "link:aberdeen",
+    "edinburgh": "link:edinburgh",
+    "warpsocket": "link:warpsocket"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

@@ -24,4 +24,4 @@ Bun.serve({
 
 // We're only doing this import here such that Bun knows to reload when api.ts changes
 // when in --watch mode.
-import './api';
+// import './api';

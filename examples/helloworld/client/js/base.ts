@@ -42,13 +42,15 @@ dump(model); // Live model (and nested linked models) will appear in model.value
 $('h2:Toggle friend');
 const formBusy = proxy(false);
 const friendName = proxy('');
-$('form submit=', async () => {
+$('form .busy=', formBusy, 'submit=', async (e: any) => {
+    e.preventDefault();
     formBusy.value = true;
-    await userApi.toggleFriend(friendName.value).promise;
+    const found = await userApi.toggleFriend(friendName.value).promise;
     formBusy.value = false;
+    if (!found) alert('No such person: '+friendName.value);
 }, () => {
-    $('input placeholder="Friend name" bind=', friendName);
-    $('button text="Toggle friend" .busy=', formBusy);
+    $('input placeholder="Person name" bind=', friendName);
+    $('button text="Toggle friend"');
 });
 
 // Socket streaming - server pushes data via callbacks.

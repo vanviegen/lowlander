@@ -37,3 +37,9 @@ button {
     background-color: green;
     color: white;
 }
+
+.busy {
+    cursor: default;
+    pointer-events: none;
+    opacity: 0.6;
+}

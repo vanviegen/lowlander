@@ -28,6 +28,11 @@ export abstract class StreamTypeBase<T> {
     static id: number;
     /** @internal */
     constructor(public _instance: E.Model<any> & T) {}
+
+    toString() {
+        let streamTypes = streamTypesPerModel.get(this._instance.constructor as ModelClass) || [];
+        return `{Stream model=${this._instance.toString()} type=${streamTypes.indexOf(this.constructor as any)}}`;
+    }
 }
 
 /**
@@ -319,6 +324,9 @@ export class ServerProxy<API extends object, RETURN> {
      * @param value - Value returned immediately to the client
      */
     constructor(public api: API, public value: RETURN) {}
+    toString() {
+        return `{ServerProxy proxy=${this.api.constructor.name} value=${this.value}}`;
+    }
 }
 
 /**
@@ -360,6 +368,14 @@ export class Socket<T> {
             channel = new DataPack().write(channel).toUint8Array()
         }
         warpsocket.subscribe(this.virtualSocketId, channel, delta);
+    }
+
+    toString() {
+        return `{Socket id=${this.virtualSocketId}}`;
+    }
+
+    [Symbol.for('nodejs.util.inspect.custom')]() {
+        return this.toString();
     }
 }
 

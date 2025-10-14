@@ -111,7 +111,11 @@ export class Connection<T> {
     /**
      * Returns the current connection status. Reactive in Aberdeen scopes.
      */
-    isOnline(): boolean { return this.onlineProxy.value; }    
+    isOnline(): boolean { return this.onlineProxy.value; }
+
+    /**
+     * TODO: Add some more variations to isOnline, like isBusy and isReady (initials requests done)
+     */
 
     private connect() {
         const ws = this.ws = new WebSocket(this.url);
@@ -229,14 +233,17 @@ export class Connection<T> {
 
             request.resultProxy.busy = false;
 
-            if (result.error != null) {
-                console.error(result.error);
-                request.reject!(result.error);
-            } else {
-                request.resolve!(result.value);
+            if (request.resolve) {
+                // This does not happen on reconnect
+                if (result.error != null) {
+                    console.error(result.error);
+                    request.reject!(result.error);
+                } else {
+                    request.resolve(result.value);
+                }
+                delete request.resolve;
+                delete request.reject;
             }
-            delete request.resolve;
-            delete request.reject;
         };
     }
 
@@ -285,6 +292,8 @@ export class Connection<T> {
 
             this.activeRequests.set(requestId, request);
 
+            console.log(`outgoing call requestId=${requestId} method=${methodName} params=`, params);
+
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                 this.ws.send(request.requestBuffer);
             }
@@ -292,6 +301,7 @@ export class Connection<T> {
             clean(() => {
                 this.activeRequests.delete(requestId);
                 if (request.virtualSocketIds?.length || request.hasServerProxy) {
+                    console.log(`outgoing cancel requestId=${request.requestId} virtualSocketIds=${request.virtualSocketIds} hasServerProxy=${request.hasServerProxy}`);
                     const data = DataPack.createUint8Array(
                         ++this.requestCounter,
                         CLIENT_MESSAGES.cancel,
