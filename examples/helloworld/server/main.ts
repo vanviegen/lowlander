@@ -1,5 +1,5 @@
 // This example is Bun-only, as it conveniently transpiles client-files on the fly.
-// For Node.js, you'd have to add a build step for client-files, and  serve them as
+// For Node.js, you'd have to add a build step for client-files, and serve them as
 // static files (e.g. using express.static).
 
 import { fileURLToPath } from 'url';
@@ -24,4 +24,4 @@ Bun.serve({
 
 // We're only doing this import here such that Bun knows to reload when api.ts changes
 // when in --watch mode.
-// import './api';
+import './api';

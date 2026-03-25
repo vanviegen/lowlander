@@ -1,45 +1,50 @@
 import * as E from "edinburgh";
 import { ServerProxy, createStreamType, Socket } from "lowlander/server";
+import * as warpsocket from "warpsocket";
 
-import * as admin from "lowlander/server/admin";
-
+export const getDebugState = warpsocket.getDebugState;
 
 // Simple RPC function example
 export function add(a: number, b: number): number {
     return a + b;
 }
 
-
 // Example of a stateful server-side API that's exposed via ServerProxy
 export class UserAPI {
-    constructor(public user: Person) {}
+    constructor(public userName: string) {}
+
+    get user(): Person {
+        const result = Person.byName.get(this.userName);
+        if (!result) throw new Error(`User '${this.userName}' not found`);
+        return result;
+    }
 
     getBio() {
         return `${this.user.name} is ${this.user.age} years old and has ${this.user.friends.length} friend(s).`;
     }
 
     toggleFriend(friendName: string) {
-        for(const p of Person.findAll()) {
-            console.log('-', p.name);
+        console.log('toggleFriends', this.user.friends, 'looking for', friendName);
+        for(const [idx, val] of Object.entries(this.user.friends)) {
+            if (val.name === friendName) {
+                this.user.friends.splice(Number(idx), 1);
+                console.log('removed', this.user.friends);
+                return true;
+            }
         }
-
         const friend = Person.byName.get(friendName);
-        console.log(`toggleFriend ${this.user.name} toggling ${friendName} ->`, friend);
         if (!friend) return false;
-        const index = this.user.friends.indexOf(friend);
-        if (index >= 0) {
-            this.user.friends.splice(index, 1);
-        } else {
-            this.user.friends.push(friend);
-        }
+        this.user.friends.push(friend);
+        console.log('added', this.user.friends);
         return true;
     }
 
-    admin() {
-        if (this.user.name === 'Frank') {
-            return admin;
-        }
-    }
+    // admin() {
+    //     if (this.user.name !== 'Frank') {
+    //         throw new Error('Access denied');
+    //     }
+    //     return new ServerProxy(admin);
+    // }
 }
 
 // Authentication example - returns a ServerProxy with both a value and API object
@@ -48,7 +53,7 @@ export async function authenticate(auth: string) {
     const user = Person.byName.get(auth);
     if (!user) throw new Error('User not found');
     // Client receives 'secret' as .value and UserAPI methods via .serverProxy
-    return new ServerProxy(new UserAPI(user), 'secret');
+    return new ServerProxy(new UserAPI(auth), 'secret');
 }
 
 
@@ -78,7 +83,7 @@ let ids = await E.transact(() => {
     let p1 = Person.byName.get('Frank') || new Person({name: 'Frank', age: 45, password: 'secret'});
     let p2 = Person.byName.get('Alice') || new Person({name: 'Alice', age: 25, password: 'hidden', friends: [p1]});
     let p3 = Person.byName.get('Bob') || new Person({name: 'Bob', age: 65, password: 'himom', friends: [p1, p2]});
-    if (p1.getState() === "new") p1.friends = [p2, p3];
+    if (p1.getState() === "created") p1.friends = [p2, p3];
     let m1 = MyModel.byName.get('Test') || new MyModel({name: 'Test', owner: p1});
     let m2 = MyModel.byName.get('Another') || new MyModel({name: 'Another', owner: p2, next: m1});
     return {p1: p1.name, p2: p2.name, m1: m1.id, m2: m2.id};
@@ -101,7 +106,8 @@ const MyStream = createStreamType(MyModel, {
         name: true,
         age: true,
         friends: {
-            name: true
+            name: true,
+            age: true,
         }
     }
 });
@@ -125,3 +131,4 @@ export function streamSomething(socket: Socket<number>) {
         }
     }, 2000);
 }
+

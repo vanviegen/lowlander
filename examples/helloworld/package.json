@@ -1,0 +1,8 @@
+{
+  "name": "helloworld",
+  "private": true,
+  "dependencies": {
+    "lowlander": "file:../../",
+    "mdui": "^2.1.4"
+  }
+}

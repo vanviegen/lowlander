@@ -85,6 +85,7 @@ type Project<T, S> =
 
 /**
  * Returns a stable numeric ID for a key tuple, allocating a new one if needed.
+ * Safe for multiple WarpSocket threads.
  * @internal
  */
 function getIdForData(namespace: string, ...data: any): number {
@@ -92,13 +93,13 @@ function getIdForData(namespace: string, ...data: any): number {
     for(const d of data) dataKeyPack.write(d);
     const dataKey = dataKeyPack.toUint8Array();
 
-    const countKey = new DataPack().write(namespace).toUint8Array();
+    const idPack = warpsocket.getKey(dataKey);
+    if (idPack) {
+        return new DataPack(idPack).readNumber();
+    }
 
+    const countKey = new DataPack().write(namespace).toUint8Array();
     while(true) {
-        const idPack = warpsocket.getKey(dataKey);
-        if (idPack) {
-            return new DataPack(idPack).readNumber();
-        }
         // Insert a new stream type
         const countPack = warpsocket.getKey(countKey);
         const newCount = countPack ? new DataPack(countPack).readNumber() + 1 : 1;
@@ -181,45 +182,62 @@ export function createStreamType<T, S extends FieldSelection<T>>(
     return StreamType;
 }
 
-function getLinks(newValue: any, modelMap: Map<E.Model<unknown>, Map<number,number>>, delta: number, streamIndex: number): void {
-    if (typeof newValue !== 'object' || newValue == null) return;
-    if (Array.isArray(newValue)) {
-        for (const item of newValue) {
-            getLinks(item, modelMap, delta, streamIndex);
-        }
-    } else if (newValue instanceof E.Model) {
-        let streamIndexMap = modelMap.get(newValue);
-        if (!streamIndexMap) modelMap.set(newValue, streamIndexMap = new Map());
-
-        const v = (streamIndexMap.get(streamIndex) || 0) + delta;
-        if (v) streamIndexMap.set(streamIndex, v);
-        else streamIndexMap.delete(streamIndex);
+/** Writes `value` to `pack`, replacing Model instances with XOR'd hash refs. */
+function writeModelField(pack: DataPack, value: any, streamTypeId: number): void {
+    if (typeof value !== 'object' || value == null) {
+        pack.write(value);
+    } else if (value instanceof E.Model) {
+        pack.writeCustom('model', value.getPrimaryKeyHash() + streamTypeId);
+    } else if (Array.isArray(value)) {
+        pack.writeCollection('array', () => {
+            for (const item of value) writeModelField(pack, item, streamTypeId);
+        });
     } else {
-        for (const key of Object.keys(newValue)) {
-            getLinks(newValue[key], modelMap, delta, streamIndex);
+        pack.writeCollection('object', () => {
+            for (const key of Object.keys(value)) {
+                pack.write(key);
+                writeModelField(pack, value[key], streamTypeId);
+            }
+        });
+    }
+}
+
+/** Tracks link deltas for subscription management. */
+function updateLinkDeltas(value: any, linkDeltas: Map<E.Model<unknown>, Map<number,number>>, streamTypeId: number, delta: number): void {
+    if (typeof value !== 'object' || value == null) return;
+    if (Array.isArray(value)) {
+        for (const item of value) updateLinkDeltas(item, linkDeltas, streamTypeId, delta);
+    } else if (value instanceof E.Model) {
+        let map = linkDeltas.get(value);
+        if (!map) linkDeltas.set(value, map = new Map());
+        const v = (map.get(streamTypeId) || 0) + delta;
+        if (v) map.set(streamTypeId, v);
+        else map.delete(streamTypeId);
+    } else {
+        for (const key of Object.keys(value)) {
+            updateLinkDeltas(value[key], linkDeltas, streamTypeId, delta);
         }
     }
 }
 
-E.setOnSaveCallback((commitId: number, models: E.Model<any>[]) => {
-    // TODO: do something with commitId, to resolve race conditions client-side
-    for(const model of models) {
+E.setOnSaveCallback((commitId: number, items: Map<E.Model<any>, E.Change>) => {
+    console.log('onSave', commitId);
+    for(const [model, changed] of items.entries()) {
+        
         const streamTypes = streamTypesPerModel.get(model.constructor);
+        console.log('Model changed:', model, changed, `streams=${streamTypes?.length}`);
         if (!streamTypes) continue;
 
-        const changed = model.changed as Partial<E.Model<any>> | 'created' | 'deleted';
-
         for(const StreamType of streamTypes) {
-            const channelName = DataPack.createUint8Array(CHANNEL_TYPE_MODEL, model.getPrimaryKeyHash()!, StreamType.id);
+            const channelName = DataPack.createUint8Array(CHANNEL_TYPE_MODEL, model.getPrimaryKeyHash() + StreamType.id);
+
+            console.log('Processing stream type', StreamType.name, 'channel', channelName);
 
             // Don't bother constructing a change message if nobody is listening
             if (!warpsocket.hasSubscriptions(channelName)) continue;
 
-            if (changed === 'created') {
-                // Nothing needs to be done, as there can't be any subscribers yet. (?)
-            } else if (changed === 'deleted') {
-                sendDeleteModel(channelName, model, commitId);
-            } else if (typeof changed === 'object') {
+            // When an instance is first created, we can't possibly have any references to it yet, so we don't need to emit it.
+            if (changed !== 'created') {
                 sendModel(channelName, model, commitId, StreamType, changed);
             }
         }
@@ -227,73 +245,73 @@ E.setOnSaveCallback((commitId: number, models: E.Model<any>[]) => {
 });
 
 
-
-// Models should serialize as a custom 'model' type containing their primary key hash
-declare module "edinburgh" {
-    interface Model<SUB> {
-        toDataPack(dataPack: DataPack): void;
-    }
-}
-E.Model.prototype.toDataPack = function(this: E.Model<any>, dataPack: DataPack) {
-    dataPack.writeCustom('model', this.getPrimaryKeyHash());
-}
-
-
-export function sendModel(target: Uint8Array | number | number[], model: E.Model<any>, commitId: number, StreamType: typeof StreamTypeBase<any>, changed?: Partial<E.Model<any>>) {
+/**
+ * Sends (updated) data for `model` to `target`.
+ * `target` is a virtual socket with a requestId+'d' user prefix, or a channel that subscribes such virtual sockets.
+ */
+export function sendModel(target: Uint8Array | number | number[], model: E.Model<any>, commitId: number, StreamType: typeof StreamTypeBase<any>, changed?: E.Change) {
     let pack = new DataPack();
-    pack.write(model.getPrimaryKeyHash()!);
+    pack.write(model.getPrimaryKeyHash()! + StreamType.id);
+    pack.write(commitId);
     
-    const linkDeltas = new Map<E.Model<unknown>, Map<number,number>>();
-    let hasField = false;
+    let mustSend = false;
 
-    pack.writeCollection('object', (addRecord) => {
-        for(const field of Object.keys(StreamType.fields)) {
-            if (changed && changed.hasOwnProperty(field)) continue;
-            let streamIndex = StreamType.fields[field];
+    if (changed === 'deleted') {
+        pack.write(null);
+        mustSend = true;
+    }
+    else { // changed is an object or 'created'
+        const linkDeltas = new Map<E.Model<unknown>, Map<number,number>>();
 
-            const n = (model as any)[field];
-            addRecord(field, n);
-            hasField = true;
-            
-            if (typeof streamIndex === 'number') {
-                getLinks(n, linkDeltas, 1, streamIndex);
-                if (changed) getLinks((changed as any)[field], linkDeltas, -1, streamIndex);
+        pack.writeCollection('object', (addRecord) => {
+            for(const fieldName in StreamType.fields) {
+                if (typeof changed === 'object' && !changed.hasOwnProperty(fieldName)) continue;
+                let streamIndex = StreamType.fields[fieldName];
+
+                const fieldValue = (model as any)[fieldName];
+                mustSend = true;
+                
+                if (typeof streamIndex === 'number') {
+                    pack.write(fieldName);
+                    writeModelField(pack, fieldValue, streamIndex);
+                    updateLinkDeltas(fieldValue, linkDeltas, streamIndex, 1);
+                    if (typeof changed === 'object') updateLinkDeltas(changed[fieldName], linkDeltas, streamIndex, -1);
+                } else {
+                    addRecord(fieldName, fieldValue);
+                }
             }
-        }
-    });
+        });
 
-    for(const linkedModel of linkDeltas.keys()) {
-        let streamIndexMap = linkDeltas.get(linkedModel)!;
-        const subStreamTypes = streamTypesPerModel.get(linkedModel.constructor)!;
-        for(const subStreamType of subStreamTypes) {
-            const delta = streamIndexMap.get(subStreamType.id);
-            if (delta) { // Only in case delta is set and non-zero
-                pushModel(target, linkedModel, commitId, subStreamType, delta);
+        for(const linkedModel of linkDeltas.keys()) {
+            let streamIndexMap = linkDeltas.get(linkedModel)!;
+            const subStreamTypes = streamTypesPerModel.get(linkedModel.constructor)!;
+            for(const subStreamType of subStreamTypes) {
+                const delta = streamIndexMap.get(subStreamType.id);
+                if (delta) { // Only in case delta is set and non-zero
+                    pushModel(target, linkedModel, commitId, subStreamType, delta);
+                }
             }
         }
     }
+    // else: Do nothing in case of changed=="created", as there can't be any subscribers yet at this time.
 
     // If at least one field was updated, send the packet
-    if (hasField) {
+    if (mustSend) {
         warpsocket.send(target, pack.toUint8Array(false));
     }
 }
 
+/**
+ * Subscribes `target` to this model, and sends initial data.
+ * `target` is a virtual socket with a requestId+'d' user prefix, or a channel that subscribes such virtual sockets.
+ */
 export function pushModel(target: number | Uint8Array | number[], model: E.Model<any>, commitId: number, SubStreamType: typeof StreamTypeBase<any>, delta: number) {
-    const subChannel = DataPack.createUint8Array(CHANNEL_TYPE_MODEL, model.getPrimaryKeyHash()!, SubStreamType.id);
+    const subChannel = DataPack.createUint8Array(CHANNEL_TYPE_MODEL, model.getPrimaryKeyHash() + SubStreamType.id);
 
     let changedSocketIds = warpsocket.subscribe(target, subChannel, delta);
     if (changedSocketIds.length > 0) {
-        if (delta > 0) {
-            sendModel(changedSocketIds, model, commitId, SubStreamType);
-        } else {
-            sendDeleteModel(changedSocketIds, model, commitId);
-        }
+        sendModel(changedSocketIds, model, commitId, SubStreamType, delta > 0 ? 'created' : 'deleted');
     }
-}
-
-function sendDeleteModel(target: number | Uint8Array | number[], model: E.Model<any>, _commitId: number) {
-    warpsocket.send(target, DataPack.createBuffer(model.getPrimaryKey(), null));
 }
 
 /**
@@ -323,9 +341,9 @@ export class ServerProxy<API extends object, RETURN> {
      * @param api - Server-side API object exposed to the client
      * @param value - Value returned immediately to the client
      */
-    constructor(public api: API, public value: RETURN) {}
+    constructor(public api: API, public value?: RETURN) {}
     toString() {
-        return `{ServerProxy proxy=${this.api.constructor.name} value=${this.value}}`;
+        return `{ServerProxy proxy=${this.api.constructor?.name} value=${this.value}}`;
     }
 }
 

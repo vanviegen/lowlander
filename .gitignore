@@ -7,6 +7,6 @@ node_modules/
 build
 dist
 types
-.olmdb
+.edinburgh
 tsconfig.tsbuildinfo
 .gdb_history

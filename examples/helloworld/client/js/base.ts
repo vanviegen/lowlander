@@ -1,27 +1,39 @@
+import 'mdui/mdui.css';
+import 'mdui/components/button.js';
+import 'mdui/components/fab.js';
+import 'mdui/components/text-field.js';
+import { alert } from 'mdui/functions/alert.js';
 import type * as API from '../../server/api.js';
 import { Connection } from 'lowlander/client';
-import { $, dump, proxy } from "aberdeen";
+import A from 'aberdeen';
+
+import { setColorScheme } from 'mdui/functions/setColorScheme.js';
+// Generate a color scheme based on #0061a4 and set the <html> element to that color scheme
+setColorScheme('#ef6b00');
+
+A.setSpacingCssVars();
 
 const WEBSOCKET_URL = `ws://${location.hostname}:8080/`;
 
 // Create a WebSocket connection with type-safe RPC to the server API.
 const connection = new Connection<typeof API>(WEBSOCKET_URL);
 const api = connection.api;
-$('h2:Online')
+A('h2#Online')
 // Create a reactive scope to render online status
-$(() => {
-    $(connection.isOnline() ? 'text=yes' : 'text=no');
+A(() => {
+    A(connection.isOnline() ? 'text=yes' : 'text=no');
 });
 
 // Simple RPC call - returns a PromiseProxy that resolves to the result.
 const sum = api.add(1234, 6753);
-$('h2:Answer')
-dump(sum);
+A('h2#Answer')
+A.dump(sum);
 
 // Server proxy example - authenticate returns both a value and a stateful API object.
 const auth = api.authenticate('Frank');
-$('h2:Auth token');
-dump(auth); // auth.value will become "secret" once authentication completes
+A('h2#AuthToken');
+A.dump(auth); // auth.value will become "secret" once authentication completes
+
 
 // Access the server-side UserAPI through the .serverProxy property.
 // Note that this proxy is usable immediately, even though the authentication
@@ -31,31 +43,41 @@ const userApi = auth.serverProxy;
 
 // Call methods on the server proxy (returns PromiseProxy like regular RPC).
 const bio = userApi.getBio();
-$('h2:Bio');
-dump(bio); // bio.value will become "1:Frank"
+A('h2#Bio');
+A.dump(bio); // bio.value will become "1:Frank"
 
 // Model streaming - returns a reactive proxy that updates when server-side model changes.
 const model = api.streamModel();
-$('h2:Model');
-dump(model); // Live model (and nested linked models) will appear in model.value
+A('h2#Model');
+A.dump(model); // Live model (and nested linked models) will appear in model.value
 
-$('h2:Toggle friend');
-const formBusy = proxy(false);
-const friendName = proxy('');
-$('form .busy=', formBusy, 'submit=', async (e: any) => {
+A('h2#Toggle friend');
+const formBusy = A.proxy(false);
+const friendName = A.proxy('');
+A('form display:flex gap:$2', 'submit=', async (e: any) => {
     e.preventDefault();
     formBusy.value = true;
     const found = await userApi.toggleFriend(friendName.value).promise;
     formBusy.value = false;
-    if (!found) alert('No such person: '+friendName.value);
+    if (!found) alert({description: 'No such person: ' + friendName.value});
 }, () => {
-    $('input placeholder="Person name" bind=', friendName);
-    $('button text="Toggle friend"');
+    A('mdui-text-field label="Person name" bind=', friendName);
+    A(() => {
+        if (formBusy.value) A('mdui-circular-progress');
+        else A('mdui-button type=submit #Toggle friend');
+    })
 });
 
+
+
 // Socket streaming - server pushes data via callbacks.
-const data = proxy([] as number[]);
+const data = A.proxy([] as number[]);
 let dataIndex = 0;
 api.streamSomething(item => data[dataIndex++ % 20] = item);
-$('h2:Streamed data');
-dump(data);
+A('h2#Streamed data');
+A.dump(data);
+
+A('mdui-fab icon=admin_panel_settings text="Lowlander Admin" click=', async () => {
+    const { showAdminModal } = await import('./admin');
+    showAdminModal(api);
+});

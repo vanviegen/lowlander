@@ -1,5 +1,5 @@
 import type { Socket, ServerProxy } from '../server/server.js';
-import {proxy, unproxy, clean, copy, NO_COPY} from 'aberdeen';
+import A from 'aberdeen';
 import DataPack from 'edinburgh/datapack';
 import { SERVER_MESSAGES, CLIENT_MESSAGES } from '../server/protocol.js';
 import type { PromiseProxy } from 'aberdeen';
@@ -34,16 +34,109 @@ type ClientProxyArgs<Args extends any[]> = Args extends [infer A, ...infer Rest]
 type ClientProxyReturn<R> = R extends Promise<infer U>
     ? ClientProxyReturn<U>
     : R extends ServerProxy<infer API, infer RETURN>
-        ? PromiseProxy<RETURN> & {promise: Promise<any>, serverProxy: ClientProxyObject<API>}
-    : PromiseProxy<R> & {promise: Promise<any>};
+        ? PromiseProxy<RETURN> & {promise: Promise<RETURN>, serverProxy: ClientProxyObject<API>}
+        : PromiseProxy<R> & {promise: Promise<R>};
 
 /**
  * Transforms server-side function signatures for client-side proxy use.
- * 
- * @typeParam T - The server-side function type
+ * This type correctly handles function overloads by explicitly matching
+ * up to 8 signatures and creating an intersection of the transformed types.
+ *
+ * @typeParam T - The server-side function type, which may be overloaded.
  */
-type ClientProxyFunction<T> = T extends (...args: infer Args) => infer Return
-    ? (...args: ClientProxyArgs<Args>) => ClientProxyReturn<Return>
+// Yeah, this is ugly beyond belief, but TypeScript doesn't have a
+// better way to handle function overloads in conditional types.
+// The non-ugly version would be:
+//
+// type ClientProxyFunction<T> = T extends (...args: infer Args) => infer Return
+//  ? (...args: ClientProxyArgs<Args>) => ClientProxyReturn<Return>
+//    : never;
+type ClientProxyFunction<T> = T extends {
+    (...args: infer A1): infer R1;
+    (...args: infer A2): infer R2;
+    (...args: infer A3): infer R3;
+    (...args: infer A4): infer R4;
+    (...args: infer A5): infer R5;
+    (...args: infer A6): infer R6;
+    (...args: infer A7): infer R7;
+    (...args: infer A8): infer R8;
+} ?
+    & ((...args: ClientProxyArgs<A1>) => ClientProxyReturn<R1>)
+    & ((...args: ClientProxyArgs<A2>) => ClientProxyReturn<R2>)
+    & ((...args: ClientProxyArgs<A3>) => ClientProxyReturn<R3>)
+    & ((...args: ClientProxyArgs<A4>) => ClientProxyReturn<R4>)
+    & ((...args: ClientProxyArgs<A5>) => ClientProxyReturn<R5>)
+    & ((...args: ClientProxyArgs<A6>) => ClientProxyReturn<R6>)
+    & ((...args: ClientProxyArgs<A7>) => ClientProxyReturn<R7>)
+    & ((...args: ClientProxyArgs<A8>) => ClientProxyReturn<R8>)
+: T extends {
+    (...args: infer A1): infer R1;
+    (...args: infer A2): infer R2;
+    (...args: infer A3): infer R3;
+    (...args: infer A4): infer R4;
+    (...args: infer A5): infer R5;
+    (...args: infer A6): infer R6;
+    (...args: infer A7): infer R7;
+} ?
+    & ((...args: ClientProxyArgs<A1>) => ClientProxyReturn<R1>)
+    & ((...args: ClientProxyArgs<A2>) => ClientProxyReturn<R2>)
+    & ((...args: ClientProxyArgs<A3>) => ClientProxyReturn<R3>)
+    & ((...args: ClientProxyArgs<A4>) => ClientProxyReturn<R4>)
+    & ((...args: ClientProxyArgs<A5>) => ClientProxyReturn<R5>)
+    & ((...args: ClientProxyArgs<A6>) => ClientProxyReturn<R6>)
+    & ((...args: ClientProxyArgs<A7>) => ClientProxyReturn<R7>)
+: T extends {
+    (...args: infer A1): infer R1;
+    (...args: infer A2): infer R2;
+    (...args: infer A3): infer R3;
+    (...args: infer A4): infer R4;
+    (...args: infer A5): infer R5;
+    (...args: infer A6): infer R6;
+} ?
+    & ((...args: ClientProxyArgs<A1>) => ClientProxyReturn<R1>)
+    & ((...args: ClientProxyArgs<A2>) => ClientProxyReturn<R2>)
+    & ((...args: ClientProxyArgs<A3>) => ClientProxyReturn<R3>)
+    & ((...args: ClientProxyArgs<A4>) => ClientProxyReturn<R4>)
+    & ((...args: ClientProxyArgs<A5>) => ClientProxyReturn<R5>)
+    & ((...args: ClientProxyArgs<A6>) => ClientProxyReturn<R6>)
+: T extends {
+    (...args: infer A1): infer R1;
+    (...args: infer A2): infer R2;
+    (...args: infer A3): infer R3;
+    (...args: infer A4): infer R4;
+    (...args: infer A5): infer R5;
+} ?
+    & ((...args: ClientProxyArgs<A1>) => ClientProxyReturn<R1>)
+    & ((...args: ClientProxyArgs<A2>) => ClientProxyReturn<R2>)
+    & ((...args: ClientProxyArgs<A3>) => ClientProxyReturn<R3>)
+    & ((...args: ClientProxyArgs<A4>) => ClientProxyReturn<R4>)
+    & ((...args: ClientProxyArgs<A5>) => ClientProxyReturn<R5>)
+: T extends {
+    (...args: infer A1): infer R1;
+    (...args: infer A2): infer R2;
+    (...args: infer A3): infer R3;
+    (...args: infer A4): infer R4;
+} ?
+    & ((...args: ClientProxyArgs<A1>) => ClientProxyReturn<R1>)
+    & ((...args: ClientProxyArgs<A2>) => ClientProxyReturn<R2>)
+    & ((...args: ClientProxyArgs<A3>) => ClientProxyReturn<R3>)
+    & ((...args: ClientProxyArgs<A4>) => ClientProxyReturn<R4>)
+: T extends {
+    (...args: infer A1): infer R1;
+    (...args: infer A2): infer R2;
+    (...args: infer A3): infer R3;
+} ?
+    & ((...args: ClientProxyArgs<A1>) => ClientProxyReturn<R1>)
+    & ((...args: ClientProxyArgs<A2>) => ClientProxyReturn<R2>)
+    & ((...args: ClientProxyArgs<A3>) => ClientProxyReturn<R3>)
+: T extends {
+    (...args: infer A1): infer R1;
+    (...args: infer A2): infer R2;
+} ?
+    & ((...args: ClientProxyArgs<A1>) => ClientProxyReturn<R1>)
+    & ((...args: ClientProxyArgs<A2>) => ClientProxyReturn<R2>)
+: T extends (...args: infer A) => infer R
+    ? (...args: ClientProxyArgs<A>) => ClientProxyReturn<R>
     : never;
 
 /**
@@ -51,7 +144,7 @@ type ClientProxyFunction<T> = T extends (...args: infer Args) => infer Return
  * 
  * @typeParam T - The server-side API object type
  */
-type ClientProxyObject<T> = {
+export type ClientProxyObject<T> = {
     [K in keyof T]: ClientProxyFunction<T[K]>
 };
 
@@ -91,7 +184,7 @@ export class Connection<T> {
     private requestCounter = 0;
     private reconnectAttempts = 0;
     public _proxyCounter = 0;
-    private onlineProxy = proxy(false);
+    private onlineProxy = A.proxy(false);
 
     /**
      * Type-safe proxy to the server-side API. Methods return `PromiseProxy` objects
@@ -119,6 +212,7 @@ export class Connection<T> {
 
     private connect() {
         const ws = this.ws = new WebSocket(this.url);
+        ws.binaryType = "arraybuffer";
         console.log(`Connecting to WebSocket at ${this.url}`);
 
         this.ws.onopen = () => {
@@ -144,16 +238,15 @@ export class Connection<T> {
             this.reconnect();
         };
         
-        this.ws.onmessage = async (event) => {
+        this.ws.onmessage = (event) => {
             if (ws !== this.ws) return; // No longer the current connection
-            const data = await event.data.arrayBuffer();
-            const pack = new DataPack(new Uint8Array(data));
+            const pack = new DataPack(new Uint8Array(event.data));
             // console.log(`onmessage: ${pack}`);
             const requestId = pack.readPositiveInt();
 
             const request = this.activeRequests.get(requestId);
             if (!request) return; // Raced
-            const result = unproxy(request.resultProxy);
+            const result = A.unproxy(request.resultProxy);
 
             const type = pack.read();
             if (typeof type === 'number') {
@@ -169,28 +262,30 @@ export class Connection<T> {
 
             // This packet type does not represent the result for a request
             if (type === SERVER_MESSAGES.model_data) {
+                // TODO: use commitId to provide eventual consistency when updates arrive out of order.
                 request.database ||= new Map();
-                const dbKey = pack.readNumber();
+                const dbKeyHash = pack.readNumber();
+                const commitId = pack.readNumber();
                 const delta = pack.read({model: function(linkHash: number) {
                     const linkedModel = request.database!.get(linkHash);
                     if (!linkedModel) console.error('Unknown linked model hash ' + linkHash);
                     return linkedModel;
                 }});
-                console.log('incoming model_data', requestId, dbKey, delta);
+                console.log('incoming model_data', requestId, dbKeyHash, commitId, delta);
                 if (!delta) {
-                    request.database.delete(dbKey);
+                    request.database.delete(dbKeyHash);
                     return;
                 }
-                let org = request.database.get(dbKey);
+                let org = request.database.get(dbKeyHash);
                 if (org) {
                     // We know each of the provided keys to be complete.
                     // Doing a single merge wouldn't delete nested keys that have disappeared.
                     for(const key of Object.keys(delta)) {
-                        copy(org, key, delta[key]);
+                        A.copy(org, key, delta[key]);
                     }
                 }
                 else {
-                    request.database.set(dbKey, proxy(delta));
+                    request.database.set(dbKeyHash, A.proxy(delta));
                 }
                 return;
             }
@@ -200,10 +295,11 @@ export class Connection<T> {
                 const errorMessage = pack.readString();
                 request.resultProxy.error = new Error(errorMessage);
                 console.log(`incoming error requestId=${requestId} message=${errorMessage}`);
-            } else if (type === SERVER_MESSAGES.response) {
+
+            } else if (type === SERVER_MESSAGES.response || type === SERVER_MESSAGES.response_proxy) {
                 request.resultProxy.value = pack.read();
                 request.virtualSocketIds = pack.read() as number[] | undefined;
-                request.hasServerProxy = pack.readBoolean();
+                request.hasServerProxy = type === SERVER_MESSAGES.response_proxy;
                 console.log(`incoming response requestId=${requestId} value=${result.value} virtualSocketIds=${request.virtualSocketIds} hasServerProxy=${request.hasServerProxy}`);
 
             } else if (type === SERVER_MESSAGES.response_model) {
@@ -212,7 +308,7 @@ export class Connection<T> {
                 const obj = request.database?.get(dbKey);
                 console.log(`incoming response_model requestId=${requestId} dbKey=${dbKey} obj=${obj}`);
                 if (obj) {
-                    request.resultProxy.value = proxy(obj);
+                    request.resultProxy.value = A.proxy(obj);
                 } else {
                     request.resultProxy.error = new Error('Unknown database key ' + dbKey);
                 }
@@ -263,7 +359,7 @@ export class Connection<T> {
     public _createMethodStub(methodName: string, proxyId?: number) {
         return (...params: any[]) => {
             const result = {busy: true} as PromiseProxy<any> & {promise: Promise<any>} & {serverProxy: any};
-            const resultProxy = proxy(result);
+            const resultProxy = A.proxy(result);
 
             const requestId = ++this.requestCounter;
 
@@ -298,7 +394,7 @@ export class Connection<T> {
                 this.ws.send(request.requestBuffer);
             }
 
-            clean(() => {
+            A.clean(() => {
                 this.activeRequests.delete(requestId);
                 if (request.virtualSocketIds?.length || request.hasServerProxy) {
                     console.log(`outgoing cancel requestId=${request.requestId} virtualSocketIds=${request.virtualSocketIds} hasServerProxy=${request.hasServerProxy}`);
@@ -335,7 +431,7 @@ const proxyHandlers: ProxyHandler<any> = {
         return result;
     },
     has(_target: ProxyTargetType, prop: string | symbol) {
-        return typeof prop === 'string' || prop === NO_COPY;
+        return typeof prop === 'string' || prop === A.NO_COPY;
     }
 }
 

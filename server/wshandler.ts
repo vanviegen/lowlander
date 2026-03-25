@@ -101,24 +101,24 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
                     console.log('Setting proxy id', requestId, 'for socket', socketId);
                     proxies.set(requestId, response.api);
                     
-                    send(socketId, requestId, SERVER_MESSAGES.response, response.value, virtualSocketIds, true);
+                    send(socketId, requestId, SERVER_MESSAGES.response_proxy, response.value, virtualSocketIds);
 
                 } else if (response instanceof StreamTypeBase) {
                     const StreamType = response.constructor as typeof StreamTypeBase<any>;
                     const instance = response._instance;
 
                     // Create a virtual socket for the model updates, prefixed by requestId + 'd'
-                    const virtualSocketId = warpsocket.createVirtualSocket(socketId, DataPack.createUint8Array(requestId, 'd'));
+                    const virtualSocketId = warpsocket.createVirtualSocket(socketId, DataPack.createUint8Array(requestId, SERVER_MESSAGES.model_data));
                     virtualSocketIds.push(virtualSocketId);
 
                     // Push the model (and any linked models) to the client
                     pushModel(virtualSocketId, instance, 0, StreamType, 1);
 
                     // Then respond, indicating which row should be top level
-                    send(socketId, requestId, SERVER_MESSAGES.response_model, virtualSocketIds, instance.getPrimaryKeyHash()!);
+                    send(socketId, requestId, SERVER_MESSAGES.response_model, virtualSocketIds, instance.getPrimaryKeyHash() + StreamType.id);
                 } else {
                     // A regular result
-                    send(socketId, requestId, SERVER_MESSAGES.response, response, virtualSocketIds, false);
+                    send(socketId, requestId, SERVER_MESSAGES.response, response, virtualSocketIds);
                 }
             });
         } catch (error: any) {
