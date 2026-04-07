@@ -32,16 +32,19 @@
     "clean": "rm -rf build dist"
   },
   "dependencies": {
-    "aberdeen": "link:aberdeen",
     "edinburgh": "link:edinburgh",
     "warpsocket": "link:warpsocket"
+  },
+  "peerDependencies": {
+    "aberdeen": "link:aberdeen"
+  },
+  "devDependencies": {
+    "aberdeen": "link:aberdeen",
+    "@types/bun": "^1.3.10"
   },
   "workspaces": [
     "examples/*"
   ],
-  "devDependencies": {
-    "@types/bun": "^1.3.10"
-  },
   "author": "Frank van Viegen BV",
   "license": "ISC"
 }

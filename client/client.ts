@@ -4,6 +4,11 @@ import DataPack from 'edinburgh/datapack';
 import { SERVER_MESSAGES, CLIENT_MESSAGES } from '../server/protocol.js';
 import type { PromiseProxy } from 'aberdeen';
 
+// Sentinel key in commitIds entries: on initial creation, only DEFAULT_COMMIT is set
+// (applies to all keys). Per-key entries are added on subsequent updates and take
+// precedence. On deletion, DEFAULT_COMMIT guards against stale re-creates.
+const DEFAULT_COMMIT = Symbol();
+
 /**
  * Transforms server-side `Socket<T>` arguments to client-side callback functions `(data: T) => void`.
  * 
@@ -262,8 +267,8 @@ export class Connection<T> {
 
             // This packet type does not represent the result for a request
             if (type === SERVER_MESSAGES.model_data) {
-                // TODO: use commitId to provide eventual consistency when updates arrive out of order.
                 request.database ||= new Map();
+                request.commitIds ||= new Map();
                 const dbKeyHash = pack.readNumber();
                 const commitId = pack.readNumber();
                 const delta = pack.read({model: function(linkHash: number) {
@@ -272,20 +277,31 @@ export class Connection<T> {
                     return linkedModel;
                 }});
                 console.log('incoming model_data', requestId, dbKeyHash, commitId, delta);
+                // Schedule cleanup: after 15s, all out-of-order messages for this commitId
+                // must have arrived, so we can prune tracking entries at or below it.
+                setTimeout(() => this.pruneCommitIds(request, commitId), 15000);
+                const prevCommitIds = request.commitIds.get(dbKeyHash);
                 if (!delta) {
+                    // Stale delete: some key was already updated past this commitId
+                    if (prevCommitIds && commitId < Math.max(...prevCommitIds.values())) return;
                     request.database.delete(dbKeyHash);
+                    // Record delete's commitId so stale creates arriving later are rejected
+                    request.commitIds.set(dbKeyHash, new Map([[DEFAULT_COMMIT, commitId]]));
                     return;
                 }
                 let org = request.database.get(dbKeyHash);
                 if (org) {
-                    // We know each of the provided keys to be complete.
-                    // Doing a single merge wouldn't delete nested keys that have disappeared.
-                    for(const key of Object.keys(delta)) {
+                    // Update existing object
+                    for (const key of Object.keys(delta)) {
+                        if (commitId < (prevCommitIds?.get(key) ?? prevCommitIds?.get(DEFAULT_COMMIT) ?? -1)) continue;
                         A.copy(org, key, delta[key]);
+                        prevCommitIds!.set(key, commitId);
                     }
-                }
-                else {
+                } else {
+                    // Create new object
+                    if (prevCommitIds && commitId < (prevCommitIds.get(DEFAULT_COMMIT) ?? -1)) return; // Stale create
                     request.database.set(dbKeyHash, A.proxy(delta));
+                    request.commitIds.set(dbKeyHash, new Map([[DEFAULT_COMMIT, commitId]]));
                 }
                 return;
             }
@@ -353,6 +369,16 @@ export class Connection<T> {
         this.reconnectAttempts++;
         console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
         setTimeout(this.connect.bind(this), delay);
+    }
+
+    private pruneCommitIds(request: ActiveRequest, maxCommitId: number) {
+        if (!request.commitIds) return;
+        for (const [hash, entry] of request.commitIds) {
+            for (const [key, cid] of entry) {
+                if (cid <= maxCommitId) entry.delete(key);
+            }
+            if (!entry.size) request.commitIds.delete(hash);
+        }
     }
 
     /** @internal */
@@ -446,6 +472,7 @@ interface ActiveRequest extends ProxyTargetType {
     callbacks?: ((...args: any[]) => void)[];
     virtualSocketIds?: number[];
     database?: Map<number, Record<any,any>>; // For model streams
+    commitIds?: Map<number, Map<string | symbol, number>>; // dbKeyHash -> (key|DEFAULT_COMMIT) -> commitId
     requestBuffer: Uint8Array;
     requestId: number; // Client-generated unique ID for this request
     hasServerProxy?: boolean; // When true, the requestId has an object associated on the server side (which needs to be dropped on 'clean')
