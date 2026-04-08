@@ -1,6 +1,9 @@
 import * as E from "edinburgh";
 import DataPack from "edinburgh/datapack";
-import * as warpsocket from 'warpsocket';
+import * as realWarpsocket from 'warpsocket';
+
+/** @internal Warpsocket implementation; swapped to FakeWarpSocket in test mode. */
+export let warpsocket: typeof realWarpsocket = realWarpsocket;
 
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
@@ -414,10 +417,13 @@ export class Socket<T> {
  * start(API_FILE, { bind: '0.0.0.0:8080' });
  * ```
  */
-export function start(mainApiFile: string, opts: {bind?: string, threads?: number} = {}) {
-    warpsocket.start({
+export async function start(mainApiFile: string, opts: {bind?: string, threads?: number, injectWarpSocket?: typeof realWarpsocket} = {}): Promise<void> {
+    if (opts.injectWarpSocket) {
+        warpsocket = opts.injectWarpSocket;
+    }
+    await warpsocket.start({
         bind: opts.bind || '0.0.0.0:8080',
-        threads: opts.threads,
+        threads: opts.threads as number | undefined,
         workerPath: WSHANDLER_FILE,
         workerArg: mainApiFile,
     });

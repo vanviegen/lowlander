@@ -13,7 +13,7 @@
       "types": "./build/server/server.d.ts"
     },
     "./client": {
-      "development": "./client/client.ts",
+      "bun": "./client/client.ts",
       "import": "./build/client/client.js",
       "types": "./build/client/client.d.ts"
     },
@@ -29,13 +29,14 @@
   "scripts": {
     "build": "tsc -b && cp -rf examples/helloworld/client/assets examples/helloworld/client/index.html build/examples/helloworld/client/",
     "typecheck": "bun x tsc -b",
-    "clean": "rm -rf build dist"
+    "clean": "rm -rf build dist",
+    "test": "bun test"
   },
   "dependencies": {
-    "edinburgh": "link:edinburgh",
     "warpsocket": "link:warpsocket"
   },
   "peerDependencies": {
+    "edinburgh": "link:edinburgh",
     "aberdeen": "link:aberdeen"
   },
   "devDependencies": {

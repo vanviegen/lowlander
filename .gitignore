@@ -8,5 +8,6 @@ build
 dist
 types
 .edinburgh
+.edinburgh_test
 tsconfig.tsbuildinfo
 .gdb_history

@@ -16,7 +16,9 @@
   },
   "references": [
     { "path": "./tsconfig.server.json" },
-    { "path": "./tsconfig.client.json" }
+    { "path": "./tsconfig.client.json" },
+    { "path": "./tsconfig.test.json" }
   ],
+  "files": [],
   "exclude": ["node_modules", "build"]
 }

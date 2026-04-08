@@ -1,6 +1,5 @@
-import * as warpsocket from 'warpsocket';
 import DataPack from 'edinburgh/datapack';
-import { Socket, StreamTypeBase, pushModel, ServerProxy } from './server.js';
+import { warpsocket, Socket, StreamTypeBase, pushModel, ServerProxy } from './server.js';
 import { SERVER_MESSAGES, CLIENT_MESSAGES } from './protocol.js';
 import * as E from 'edinburgh';
 

@@ -1,4 +1,4 @@
-import type { Socket, ServerProxy } from '../server/server.js';
+import type { Socket, ServerProxy, StreamTypeBase } from '../server/server.js';
 import A from 'aberdeen';
 import DataPack from 'edinburgh/datapack';
 import { SERVER_MESSAGES, CLIENT_MESSAGES } from '../server/protocol.js';
@@ -40,7 +40,9 @@ type ClientProxyReturn<R> = R extends Promise<infer U>
     ? ClientProxyReturn<U>
     : R extends ServerProxy<infer API, infer RETURN>
         ? PromiseProxy<RETURN> & {promise: Promise<RETURN>, serverProxy: ClientProxyObject<API>}
-        : PromiseProxy<R> & {promise: Promise<R>};
+        : R extends StreamTypeBase<infer T>
+            ? PromiseProxy<T> & {promise: Promise<T>}
+            : PromiseProxy<R> & {promise: Promise<R>};
 
 /**
  * Transforms server-side function signatures for client-side proxy use.
@@ -199,9 +201,9 @@ export class Connection<T> {
     public api: ClientProxyObject<T>;
 
     /**
-     * @param url - WebSocket URL (e.g., 'ws://localhost:8080/')
+     * @param url - WebSocket URL (e.g., 'ws://localhost:8080/'), or a fake WebSocket object for testing
      */
-    constructor(public url: string) {
+    constructor(public url: string | (() => WebSocket)) {
         this.api = new Proxy({connection: this, requestId: undefined} as ProxyTargetType, proxyHandlers);
         this.connect();
     }
@@ -216,11 +218,13 @@ export class Connection<T> {
      */
 
     private connect() {
-        const ws = this.ws = new WebSocket(this.url);
+        const ws: WebSocket = this.ws = typeof this.url === 'string'
+            ? new WebSocket(this.url)
+            : this.url();
         ws.binaryType = "arraybuffer";
-        console.log(`Connecting to WebSocket at ${this.url}`);
-
-        this.ws.onopen = () => {
+        console.log(`Connecting to WebSocket at ${typeof this.url === 'string' ? this.url : '[custom WebSocket]'}`);
+ 
+        ws.onopen = () => {
             if (ws !== this.ws) return; // No longer the current connection
             console.log('WebSocket connected');
             this.onlineProxy.value = true;
@@ -231,19 +235,19 @@ export class Connection<T> {
             }
         };
         
-        this.ws.onclose = () => {
+        ws.onclose = () => {
             if (ws !== this.ws) return; // No longer the current connection
             console.log('WebSocket disconnected');
             this.reconnect();
         };
         
-        this.ws.onerror = (error) => {
+        ws.onerror = (error: any) => {
             if (ws !== this.ws) return; // No longer the current connection
             console.error('WebSocket error:', error);
             this.reconnect();
         };
         
-        this.ws.onmessage = (event) => {
+        ws.onmessage = (event: any) => {
             if (ws !== this.ws) return; // No longer the current connection
             const pack = new DataPack(new Uint8Array(event.data));
             // console.log(`onmessage: ${pack}`);
@@ -363,6 +367,8 @@ export class Connection<T> {
         this.ws = undefined;
 
         this.onlineProxy.value = false;
+
+        if (typeof this.url !== 'string') return; // No reconnect in test mode
 
         // Reconnect with exponential backoff
         const delay = Math.min(500 * Math.pow(2, this.reconnectAttempts), 20000);
