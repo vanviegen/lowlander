@@ -88,6 +88,7 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
         }
 
         try {
+            let pendingSend: (() => void) | undefined;
             await E.transact(async () => {
                 let response = await func.apply(api, params);
                 console.log('Called', methodName, 'with', params, '->', typeof response === 'object' && response ? response.toString() : JSON.stringify(response));
@@ -100,7 +101,7 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
                     console.log('Setting proxy id', requestId, 'for socket', socketId);
                     proxies.set(requestId, response.api);
                     
-                    send(socketId, requestId, SERVER_MESSAGES.response_proxy, response.value, virtualSocketIds);
+                    pendingSend = () => send(socketId, requestId, SERVER_MESSAGES.response_proxy, response.value, virtualSocketIds);
 
                 } else if (response instanceof StreamTypeBase) {
                     const StreamType = response.constructor as typeof StreamTypeBase<any>;
@@ -114,12 +115,14 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
                     pushModel(virtualSocketId, instance, 0, StreamType, 1);
 
                     // Then respond, indicating which row should be top level
-                    send(socketId, requestId, SERVER_MESSAGES.response_model, virtualSocketIds, instance.getPrimaryKeyHash() + StreamType.id);
+                    pendingSend = () => send(socketId, requestId, SERVER_MESSAGES.response_model, virtualSocketIds, instance.getPrimaryKeyHash() + StreamType.id);
                 } else {
                     // A regular result
-                    send(socketId, requestId, SERVER_MESSAGES.response, response, virtualSocketIds);
+                    pendingSend = () => send(socketId, requestId, SERVER_MESSAGES.response, response, virtualSocketIds);
                 }
             });
+            // Send response after transaction has committed
+            pendingSend!();
         } catch (error: any) {
             console.error('RPC error', error);
             sendError(socketId, requestId, error.message || 'Internal error');

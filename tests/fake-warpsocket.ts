@@ -447,6 +447,6 @@ export async function start(options: {
     }
 
     workerModule = await import(options.workerPath);
-    workerModule.handleStart?.(options.workerArg);
+    await workerModule.handleStart?.(options.workerArg);
 }
 

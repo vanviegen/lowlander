@@ -1,4 +1,4 @@
-import { expect, test, beforeAll, afterEach } from "bun:test";
+import { expect, test, beforeAll, afterEach, beforeEach } from "bun:test";
 import { passTime, assertBody, reset as resetAberdeen } from "aberdeen/test-helpers";
 import * as E from "edinburgh";
 import { start } from "lowlander/server";
@@ -9,10 +9,15 @@ import * as fakeWarpSocket from "./fake-warpsocket.js";
 
 beforeAll(async () => {
     E.init('.edinburgh_test');
+    E.setMaxRetryCount(100);
     await start(
         new URL('../examples/helloworld/server/api.ts', import.meta.url).pathname,
         { injectWarpSocket: fakeWarpSocket },
     );
+});
+
+beforeEach(async () => {
+    console .log('resetTestData', await connect().api.resetTestData(true).promise);
 });
 
 afterEach(async () => {
@@ -53,8 +58,7 @@ test('ServerProxy: getBio', async () => {
     const auth = c.api.authenticate('Frank');
     const bio = auth.serverProxy.getBio();
     await passTime(1100);
-    expect(bio.value).toContain('Frank');
-    expect(bio.value).toContain('45');
+    expect(bio.value).toContain('Frank is 45 years old');
 });
 
 test('ServerProxy: toggleFriend', async () => {
@@ -120,4 +124,28 @@ test('two connections render in same DOM', async () => {
     });
     await passTime();
     assertBody('div{span.c1{"3"} span.c2{"7"}}');
+});
+
+test('4 connections stream, mutate, and converge', async () => {
+    const conns = Array.from({length: 4}, () => connect());
+    const models = conns.map(c => c.api.streamModel());
+    A('div', () => {
+        for (const [i, m] of models.entries()) {
+            A(() => {
+                if (m.value) A(`span.c${i}#` + m.value.owner.age);
+            });
+        }
+    });
+    await passTime();
+    conns[0].api.setOwnerAge(100);
+    await passTime();
+    // All 4 connections increment simultaneously, racing through retries
+    await Promise.all(conns.map((c, i) => c.api.incrOwnerAge(i + 1).promise));
+    // Await UI update
+    await passTime();
+    // All 4 should converge; total increment = 1+2+3+4 = 10, so age = 110
+    assertBody('div{span.c0{"110"} span.c1{"110"} span.c2{"110"} span.c3{"110"}}');
+    // Restore original age
+    conns[0].api.setOwnerAge(45);
+    await passTime();
 });

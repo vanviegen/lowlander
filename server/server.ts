@@ -423,7 +423,7 @@ export async function start(mainApiFile: string, opts: {bind?: string, threads?:
     }
     await warpsocket.start({
         bind: opts.bind || '0.0.0.0:8080',
-        threads: opts.threads as number | undefined,
+        threads: opts.threads,
         workerPath: WSHANDLER_FILE,
         workerArg: mainApiFile,
     });

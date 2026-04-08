@@ -190,6 +190,7 @@ export class Connection<T> {
     private activeRequests = new Map<number, ActiveRequest>();
     private requestCounter = 0;
     private reconnectAttempts = 0;
+    /** @internal */
     public _proxyCounter = 0;
     private onlineProxy = A.proxy(false);
 
@@ -212,10 +213,6 @@ export class Connection<T> {
      * Returns the current connection status. Reactive in Aberdeen scopes.
      */
     isOnline(): boolean { return this.onlineProxy.value; }
-
-    /**
-     * TODO: Add some more variations to isOnline, like isBusy and isReady (initials requests done)
-     */
 
     private connect() {
         const ws: WebSocket = this.ws = typeof this.url === 'string'
@@ -284,7 +281,7 @@ export class Connection<T> {
                 // Schedule cleanup: after 15s, all out-of-order messages for this commitId
                 // must have arrived, so we can prune tracking entries at or below it.
                 setTimeout(() => this.pruneCommitIds(request, commitId), 15000);
-                const prevCommitIds = request.commitIds.get(dbKeyHash);
+                let prevCommitIds = request.commitIds.get(dbKeyHash);
                 if (!delta) {
                     // Stale delete: some key was already updated past this commitId
                     if (prevCommitIds && commitId < Math.max(...prevCommitIds.values())) return;
@@ -296,10 +293,18 @@ export class Connection<T> {
                 let org = request.database.get(dbKeyHash);
                 if (org) {
                     // Update existing object
+                    if (!prevCommitIds) {
+                        prevCommitIds = new Map();
+                        request.commitIds.set(dbKeyHash, prevCommitIds);
+                    }
                     for (const key of Object.keys(delta)) {
-                        if (commitId < (prevCommitIds?.get(key) ?? prevCommitIds?.get(DEFAULT_COMMIT) ?? -1)) continue;
-                        A.copy(org, key, delta[key]);
-                        prevCommitIds!.set(key, commitId);
+                        if (commitId < (prevCommitIds.get(key) ?? prevCommitIds.get(DEFAULT_COMMIT) ?? -1)) continue;
+                        if (delta[key] && typeof delta[key] === 'object') {
+                            A.copy(org, key, delta[key]);
+                        } else {
+                            org[key] = delta[key];
+                        }
+                        prevCommitIds.set(key, commitId);
                     }
                 } else {
                     // Create new object

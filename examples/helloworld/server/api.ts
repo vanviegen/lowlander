@@ -78,16 +78,31 @@ class MyModel extends E.Model<MyModel> {
     static byId = E.primary(MyModel, 'id');
     static byName = E.unique(MyModel, 'name');
 }
-// Initialize some test data
-let ids = await E.transact(() => {
-    let p1 = Person.byName.get('Frank') || new Person({name: 'Frank', age: 45, password: 'secret'});
-    let p2 = Person.byName.get('Alice') || new Person({name: 'Alice', age: 25, password: 'hidden', friends: [p1]});
-    let p3 = Person.byName.get('Bob') || new Person({name: 'Bob', age: 65, password: 'himom', friends: [p1, p2]});
-    if (p1.getState() === "created") p1.friends = [p2, p3];
-    let m1 = MyModel.byName.get('Test') || new MyModel({name: 'Test', owner: p1});
-    let m2 = MyModel.byName.get('Another') || new MyModel({name: 'Another', owner: p2, next: m1});
-    return {p1: p1.name, p2: p2.name, m1: m1.id, m2: m2.id};
-});
+
+let ids: {p1: string, p2: string, m1: string, m2: string};
+export async function resetTestData(deleteEverything: boolean) {
+    if (deleteEverything) {
+        console.log('delete');
+        await E.deleteEverything();
+        console.log('deleted');
+    }
+
+    // Initialize some test data. Even if we are already running in a transaction, we need to do this
+    // in a new (nested) transaction, as deleteEverything will have done *its* work in separate transactions
+    // as well, and we need access to its results.
+    await E.transact(() => {
+        console.log('Frank', Person.byName.get('Frank'));
+        let p1 = Person.byName.get('Frank') || new Person({name: 'Frank', age: 45, password: 'secret'});
+        let p2 = Person.byName.get('Alice') || new Person({name: 'Alice', age: 25, password: 'hidden', friends: [p1]});
+        let p3 = Person.byName.get('Bob') || new Person({name: 'Bob', age: 65, password: 'himom', friends: [p1, p2]});
+        if (p1.getState() === "created") p1.friends = [p2, p3];
+        let m1 = MyModel.byName.get('Test') || new MyModel({name: 'Test', owner: p1});
+        let m2 = MyModel.byName.get('Another') || new MyModel({name: 'Another', owner: p2, next: m1});
+        ids = {p1: p1.name, p2: p2.name, m1: m1.id, m2: m2.id};
+    });
+    return ids;
+}
+resetTestData(false);
 
 await E.transact(() => {
     E.dump();
@@ -116,6 +131,18 @@ const MyStream = createStreamType(MyModel, {
 export function streamModel() {
     const m1 = MyModel.byId.get(ids.m1)!;
     return new MyStream(m1);
+}
+
+export async function incrOwnerAge(delta: number) {
+    const m1 = MyModel.byId.get(ids.m1)!;
+    const current = m1.owner.age;
+    await new Promise(resolve => setTimeout(resolve, 50));
+    m1.owner.age = current + delta;
+}
+
+export function setOwnerAge(age: number) {
+    const m1 = MyModel.byId.get(ids.m1)!;
+    m1.owner.age = age;
 }
 
 

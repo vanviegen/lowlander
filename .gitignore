@@ -9,5 +9,5 @@ dist
 types
 .edinburgh
 .edinburgh_test
-tsconfig.tsbuildinfo
+*.tsbuildinfo
 .gdb_history
