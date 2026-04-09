@@ -6,6 +6,7 @@ node_modules/
 .sourcemaps
 build
 dist
+skill
 types
 .edinburgh
 .edinburgh_test

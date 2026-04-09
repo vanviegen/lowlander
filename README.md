@@ -20,16 +20,261 @@ This library is built on top of a number of libraries by the same author:
 
 Lowlander glues these together and adds real-time partial data synchronization and type-safe RPCs to provide a framework for rapidly building performant full-stack (database included!) web applications.
 
-## Logging
+## Tutorial
 
-You can enable debug logging to stdout by setting the `LOWLANDER_LOG_LEVEL` environment variable to a number from 0 to 3. Higher numbers produce more verbose logs, including model-level operations, updates, and reads.
+### Project Setup
+
+```bash
+bun init
+bun add lowlander aberdeen edinburgh
+```
+
+(npm should also work for all of this.)
+
+Create the project structure:
+
+```
+server/
+  main.ts     # starts the server
+  api.ts      # exported functions = RPC endpoints
+client/
+  app.ts      # UI using Aberdeen + Connection
+```
+
+If you use Claude Code, GitHub Copilot or another AI agent that supports Skills, Lowlander and its dependencies include `skill/` directories that provide specialized knowledge to the AI.
+
+Symlink them into your project's `.claude/skills` directory:
+
+```bash
+mkdir -p .claude/skills
+ln -s ../../node_modules/lowlander/skill .claude/skills/lowlander
+ln -s ../../node_modules/aberdeen/skill .claude/skills/aberdeen
+ln -s ../../node_modules/edinburgh/skill .claude/skills/edinburgh
+```
+
+### Server Entry Point
+
+The entry point starts the WarpSocket server and points it at the API file:
+
+```ts
+// server/main.ts
+import { start } from 'lowlander/server';
+import { fileURLToPath } from 'url';
+import { resolve, dirname } from 'path';
+
+const API_FILE = resolve(dirname(fileURLToPath(import.meta.url)), 'api.js');
+start(API_FILE, { bind: '0.0.0.0:8080' });
+```
+
+Options: `bind` (address:port), `threads` (worker count).
+
+### Defining RPC Endpoints
+
+Every exported function in the API file is callable from the client. No decorators or registration needed:
+
+```ts
+// server/api.ts
+export function add(a: number, b: number): number {
+    return a + b;
+}
+```
+
+Functions can be `async`. Thrown errors are sent to the client as error responses.
+
+### Edinburgh Models
+
+Define persistent data models using Edinburgh. See [Edinburgh docs](https://github.com/vanviegen/edinburgh) for full details.
+
+```ts
+import * as E from 'edinburgh';
+
+@E.registerModel
+class Person extends E.Model<Person> {
+    static byName = E.primary(Person, 'name');
+    name = E.field(E.string);
+    age = E.field(E.number);
+    friends = E.field(E.array(E.link(Person)));
+    password = E.field(E.string);
+}
+```
+
+Models are ACID, and RPC calls automatically run in transactions. When creating a `new Instance()` or updating props on an existing instance, changes are persisted to disk automatically. `E.link` objects are lazy-loaded.
+
+### Model Streaming with `createStreamType`
+
+Stream a subset of model fields to clients with real-time updates. Changes are pushed automatically. First you need to create a stream type, by doing this once:
+
+```ts
+import { createStreamType } from 'lowlander/server';
+
+// Exclude password; include friends' names and ages
+const PersonStream = createStreamType(Person, {
+    name: true,
+    age: true,
+    friends: {        // nested linked model: specify sub-selection
+        name: true,
+        age: true,
+    }
+});
+```
+
+Use `true` for plain fields. For linked model fields, provide a nested selection object. To return a stream instance from an API function:
+
+```ts
+export function streamPerson(name: string) {
+    const person = Person.byName.get(name)!;
+    return new PersonStream(person);
+}
+```
+
+On the client, this returns a reactive Aberdeen proxy that updates live when server data changes.
+
+### ServerProxy for Stateful APIs
+
+Wrap a class instance to expose per-connection stateful methods:
+
+```ts
+import { ServerProxy } from 'lowlander/server';
+
+class UserAPI {
+    constructor(public userName: string) {}
+    
+    get user(): Person {
+        return Person.byName.get(this.userName)!;
+    }
+
+    getBio() {
+        return `${this.user.name} is ${this.user.age} years old`;
+    }
+}
+
+export async function authenticate(token: string) {
+    const user = Person.byName.get(token);
+    if (!user) throw new Error('User not found');
+    return new ServerProxy(new UserAPI(token), 'secret-value');
+}
+```
+
+The client receives `'secret-value'` as `.value` and can call `UserAPI` methods via `.serverProxy`.
+
+### Socket Callbacks
+
+Use `Socket<T>` parameters for server-push streaming. On the client, these become callback functions:
+
+```ts
+import { Socket } from 'lowlander/server';
+
+export function streamNumbers(socket: Socket<number>) {
+    const interval = setInterval(() => {
+        if (!socket.send(Math.random())) clearInterval(interval);
+    }, 1000);
+}
+```
+
+`socket.send()` returns falsy when the client disconnects.
+
+### Client Connection
+
+Connect to the server with full type safety:
+
+```ts
+import { Connection } from 'lowlander/client';
+import type * as API from './server/api.js';
+
+const conn = new Connection<typeof API>('ws://localhost:8080/');
+const api = conn.api;
+```
+
+All server exports are available on `conn.api` with matching types, except `Socket<T>` params become callbacks.
+
+#### Simple RPC
+
+```ts
+const sum = api.add(1, 2);
+// sum is a PromiseProxy:
+// - sum.value starts out as undefined, and reactively updates to the result when available
+// - sum.error is an Error object if the call threw, or undefined otherwise
+// - sum.promise can be awaited: `const val = await sum.promise;` - this throws on error
+```
+
+#### Using ServerProxy
+
+```ts
+const auth = api.authenticate('Frank');
+// auth.value → 'secret-value' (after resolution)
+// auth.serverProxy → typed proxy to UserAPI methods
+
+const bio = auth.serverProxy.getBio();
+// bio.value → "Frank is 45 years old"
+```
+
+The server proxy is usable immediately—calls queue until authentication completes. If auth fails, queued calls fail too.
+
+#### Model Streaming
+
+```ts
+const person = api.streamPerson('Alice');
+// person.value is a reactive proxy that auto-updates
+```
+
+#### Socket Callbacks
+
+```ts
+api.streamNumbers(num => console.log(num));
+```
+
+On the server-side we should have a `export function streamNumbers(socket: Socket<number>)`.
+
+#### Reactive Integration with Aberdeen
+
+`PromiseProxy` results are reactive in Aberdeen scopes:
+
+```ts
+import A from 'aberdeen';
+
+const sum = api.add(1, 2);
+A(() => {
+    if (sum.busy) A('span#Loading...');
+    else if (sum.error) A('span#Error: ' + sum.error.message);
+    else A('span#Result: ' + sum.value);
+});
+```
+
+Model streams are also reactive—nested data updates trigger fine-grained UI updates:
+
+```ts
+const model = api.streamModel();
+A(() => {
+    if (!model.value) return;
+    A('h2#' + model.value.name);
+    A('p#Owner: ' + model.value.owner.name);
+});
+```
+
+#### Connection Status
+
+```ts
+A(() => {
+    A('span#' + (conn.isOnline() ? 'Connected' : 'Offline'));
+});
+```
+
+Reconnection is automatic with exponential backoff.
+
+#### Cleanup
+
+Aberdeen's `clean()` handles RPC lifecycle. When a reactive scope is destroyed, active requests and subscriptions are cancelled automatically.
+
+### Logging
+
+Set the `LOWLANDER_LOG_LEVEL` environment variable to a number from 0 to 3:
 
 - 0: no logging (default)
 - 1: connections & lifecycle
 - 2: RPC calls & responses
 - 3: model streaming & internals
 
-You can set a similar `EDINBURGH_LOG_LEVEL` variable to enable logging from the underlying Edinburgh library, which Lowlander uses for data management and synchronization.
+Set `EDINBURGH_LOG_LEVEL` similarly for Edinburgh internals.
 
 ## Server API Reference
 
@@ -90,7 +335,7 @@ Subscribes `target` to this model, and sends initial data.
 - `SubStreamType: typeof StreamTypeBase<any>`
 - `delta: number`
 
-### start · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L427)
+### start · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L428)
 
 Starts the Lowlander WebSocket server.
 
