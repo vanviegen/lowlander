@@ -4,6 +4,9 @@ import DataPack from 'edinburgh/datapack';
 import { SERVER_MESSAGES, CLIENT_MESSAGES } from '../server/protocol.js';
 import type { PromiseProxy } from 'aberdeen';
 
+/** Set to 1-3 for increasing verbosity. */
+export let logLevel = 0;
+
 // Sentinel key in commitIds entries: on initial creation, only DEFAULT_COMMIT is set
 // (applies to all keys). Per-key entries are added on subsequent updates and take
 // precedence. On deletion, DEFAULT_COMMIT guards against stale re-creates.
@@ -219,11 +222,11 @@ export class Connection<T> {
             ? new WebSocket(this.url)
             : this.url();
         ws.binaryType = "arraybuffer";
-        console.log(`Connecting to WebSocket at ${typeof this.url === 'string' ? this.url : '[custom WebSocket]'}`);
+        if (logLevel >= 1) console.log(`[lowlander] Connecting to WebSocket at ${typeof this.url === 'string' ? this.url : '[custom WebSocket]'}`);
  
         ws.onopen = () => {
             if (ws !== this.ws) return; // No longer the current connection
-            console.log('WebSocket connected');
+            if (logLevel >= 1) console.log('[lowlander] WebSocket connected');
             this.onlineProxy.value = true;
             this.reconnectAttempts = 0;
             for(const request of this.activeRequests.values()) {
@@ -234,7 +237,7 @@ export class Connection<T> {
         
         ws.onclose = () => {
             if (ws !== this.ws) return; // No longer the current connection
-            console.log('WebSocket disconnected');
+            if (logLevel >= 1) console.log('[lowlander] WebSocket disconnected');
             this.reconnect();
         };
         
@@ -277,7 +280,7 @@ export class Connection<T> {
                     if (!linkedModel) console.error('Unknown linked model hash ' + linkHash);
                     return linkedModel;
                 }});
-                console.log('incoming model_data', requestId, dbKeyHash, commitId, delta);
+                if (logLevel >= 3) console.log('[lowlander] incoming model_data', requestId, dbKeyHash, commitId, delta);
                 // Schedule cleanup: after 15s, all out-of-order messages for this commitId
                 // must have arrived, so we can prune tracking entries at or below it.
                 setTimeout(() => this.pruneCommitIds(request, commitId), 15000);
@@ -319,19 +322,19 @@ export class Connection<T> {
             if (type === SERVER_MESSAGES.error) {
                 const errorMessage = pack.readString();
                 request.resultProxy.error = new Error(errorMessage);
-                console.log(`incoming error requestId=${requestId} message=${errorMessage}`);
+                if (logLevel >= 2) console.log(`[lowlander] incoming error requestId=${requestId} message=${errorMessage}`);
 
             } else if (type === SERVER_MESSAGES.response || type === SERVER_MESSAGES.response_proxy) {
                 request.resultProxy.value = pack.read();
                 request.virtualSocketIds = pack.read() as number[] | undefined;
                 request.hasServerProxy = type === SERVER_MESSAGES.response_proxy;
-                console.log(`incoming response requestId=${requestId} value=${result.value} virtualSocketIds=${request.virtualSocketIds} hasServerProxy=${request.hasServerProxy}`);
+                if (logLevel >= 2) console.log(`[lowlander] incoming response requestId=${requestId} value=${result.value} virtualSocketIds=${request.virtualSocketIds} hasServerProxy=${request.hasServerProxy}`);
 
             } else if (type === SERVER_MESSAGES.response_model) {
                 request.virtualSocketIds = pack.read() as number[]; // There must be at least one, for the model stream
                 const dbKey = pack.readNumber();
                 const obj = request.database?.get(dbKey);
-                console.log(`incoming response_model requestId=${requestId} dbKey=${dbKey} obj=${obj}`);
+                if (logLevel >= 2) console.log(`[lowlander] incoming response_model requestId=${requestId} dbKey=${dbKey} obj=${obj}`);
                 if (obj) {
                     request.resultProxy.value = A.proxy(obj);
                 } else {
@@ -378,7 +381,7 @@ export class Connection<T> {
         // Reconnect with exponential backoff
         const delay = Math.min(500 * Math.pow(2, this.reconnectAttempts), 20000);
         this.reconnectAttempts++;
-        console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+        if (logLevel >= 1) console.log(`[lowlander] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
         setTimeout(this.connect.bind(this), delay);
     }
 
@@ -425,7 +428,7 @@ export class Connection<T> {
 
             this.activeRequests.set(requestId, request);
 
-            console.log(`outgoing call requestId=${requestId} method=${methodName} params=`, params);
+            if (logLevel >= 2) console.log(`[lowlander] outgoing call requestId=${requestId} method=${methodName} params=`, params);
 
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                 this.ws.send(request.requestBuffer);
@@ -434,7 +437,7 @@ export class Connection<T> {
             A.clean(() => {
                 this.activeRequests.delete(requestId);
                 if (request.virtualSocketIds?.length || request.hasServerProxy) {
-                    console.log(`outgoing cancel requestId=${request.requestId} virtualSocketIds=${request.virtualSocketIds} hasServerProxy=${request.hasServerProxy}`);
+                    if (logLevel >= 2) console.log(`[lowlander] outgoing cancel requestId=${request.requestId} virtualSocketIds=${request.virtualSocketIds} hasServerProxy=${request.hasServerProxy}`);
                     const data = DataPack.createUint8Array(
                         ++this.requestCounter,
                         CLIENT_MESSAGES.cancel,

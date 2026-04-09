@@ -1,5 +1,5 @@
 import DataPack from 'edinburgh/datapack';
-import { warpsocket, Socket, StreamTypeBase, pushModel, ServerProxy } from './server.js';
+import { warpsocket, Socket, StreamTypeBase, pushModel, ServerProxy, logLevel } from './server.js';
 import { SERVER_MESSAGES, CLIENT_MESSAGES } from './protocol.js';
 import * as E from 'edinburgh';
 
@@ -14,7 +14,7 @@ export interface Request {
 }
 
 export function handleOpen(socketId: number, ip: string) {
-    console.log('Client connected', socketId, ip);
+    if (logLevel >= 1) console.log('[lowlander] Client connected', socketId, ip);
 }
 
 function send(socketIdOrChannel: number|string|Uint8Array, ...data: any) {
@@ -27,7 +27,7 @@ function sendError(socketId: number, requestId: number, message: string) {
 }
 
 export async function handleStart(apiFile: any) {
-    console.log('Worker started, loading', apiFile);
+    if (logLevel >= 1) console.log('[lowlander] Worker started, loading', apiFile);
     mainApi = await import(apiFile);
 }
 
@@ -91,14 +91,14 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
             let pendingSend: (() => void) | undefined;
             await E.transact(async () => {
                 let response = await func.apply(api, params);
-                console.log('Called', methodName, 'with', params, '->', typeof response === 'object' && response ? response.toString() : JSON.stringify(response));
+                if (logLevel >= 2) console.log('[lowlander] Called', methodName, 'with', params, '->', typeof response === 'object' && response ? response.toString() : JSON.stringify(response));
 
                 // Result processing/sending should be within the transaction, as it may involve (lazy) loading models
 
                 if (response instanceof ServerProxy) {
                     let proxies = socketProxies.get(socketId);
                     if (!proxies) socketProxies.set(socketId, proxies = new Map());
-                    console.log('Setting proxy id', requestId, 'for socket', socketId);
+                    if (logLevel >= 3) console.log('[lowlander] Setting proxy id', requestId, 'for socket', socketId);
                     proxies.set(requestId, response.api);
                     
                     pendingSend = () => send(socketId, requestId, SERVER_MESSAGES.response_proxy, response.value, virtualSocketIds);
@@ -133,6 +133,6 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
 }
 
 export function handleClose(socketId: number) {
-    console.log('Client disconnected', socketId);
+    if (logLevel >= 1) console.log('[lowlander] Client disconnected', socketId);
     socketProxies.delete(socketId);
 }

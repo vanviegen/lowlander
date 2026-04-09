@@ -2,6 +2,13 @@ import * as E from "edinburgh";
 import DataPack from "edinburgh/datapack";
 import * as realWarpsocket from 'warpsocket';
 
+// Get log level from environment variable
+// 0: no logging (default)
+// 1: connections & lifecycle (connect/disconnect/reconnect, worker startup)
+// 2: RPC calls & responses (method calls, incoming responses, errors)
+// 3: model streaming & internals (onSave, model changes, stream processing)
+export const logLevel = parseInt(process.env.LOWLANDER_LOG_LEVEL || "0") || 0;
+
 /** @internal Warpsocket implementation; swapped to FakeWarpSocket in test mode. */
 export let warpsocket: typeof realWarpsocket = realWarpsocket;
 
@@ -224,17 +231,17 @@ function updateLinkDeltas(value: any, linkDeltas: Map<E.Model<unknown>, Map<numb
 }
 
 E.setOnSaveCallback((commitId: number, items: Map<E.Model<any>, E.Change>) => {
-    console.log('onSave', commitId);
+    if (logLevel >= 3) console.log('[lowlander] onSave', commitId);
     for(const [model, changed] of items.entries()) {
         
         const streamTypes = streamTypesPerModel.get(model.constructor);
-        console.log('Model changed:', model, changed, `streams=${streamTypes?.length}`);
+        if (logLevel >= 3) console.log('[lowlander] Model changed:', model, changed, `streams=${streamTypes?.length}`);
         if (!streamTypes) continue;
 
         for(const StreamType of streamTypes) {
             const channelName = DataPack.createUint8Array(CHANNEL_TYPE_MODEL, model.getPrimaryKeyHash() + StreamType.id);
 
-            console.log('Processing stream type', StreamType.name, 'channel', channelName);
+            if (logLevel >= 3) console.log('[lowlander] Processing stream type', StreamType.name, 'channel', channelName);
 
             // Don't bother constructing a change message if nobody is listening
             if (!warpsocket.hasSubscriptions(channelName)) continue;

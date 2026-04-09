@@ -17,7 +17,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-    console .log('resetTestData', await connect().api.resetTestData(true).promise);
+    await connect().api.resetTestData(true).promise;
 });
 
 afterEach(async () => {
