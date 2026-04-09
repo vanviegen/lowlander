@@ -413,6 +413,7 @@ export class Socket<T> {
  * @param mainApiFile - Absolute path to the compiled API file exporting server functions
  * @param opts.bind - Address and port (default: '0.0.0.0:8080')
  * @param opts.threads - Worker thread count (default: auto)
+ * @param opts.injectWarpSocket - For testing: inject a custom WarpSocket implementation (e.g. FakeWarpSocket)
  * 
  * @example
  * ```ts
