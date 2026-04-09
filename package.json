@@ -1,7 +1,7 @@
 {
   "name": "lowlander",
-  "version": "0.1.0",
-  "description": "TypeScript framework for data persistence and (partial) client synchronization.",
+  "version": "0.2.0",
+  "description": "TypeScript framework for data persistence, type-safe RPCs and real-time (partial) client synchronization.",
   "type": "module",
   "main": "./build/server/server.js",
   "browser": "./build/client/client.js",
@@ -23,24 +23,23 @@
       "types": "./build/server/server.d.ts"
     }
   },
-  "keywords": [
-    "mobile"
-  ],
   "scripts": {
-    "build": "tsc -b && cp -rf examples/helloworld/client/assets examples/helloworld/client/index.html build/examples/helloworld/client/",
+    "build": "tsc -b && cp -rf examples/helloworld/client/assets examples/helloworld/client/index.html build/examples/helloworld/client/ && npm run build:readme",
     "typecheck": "bun x tsc -b",
     "clean": "rm -rf build dist",
+    "build:readme": "readme-tsdoc --repo-url https://github.com/vanviegen/edinburgh",
     "test": "bun test"
   },
   "dependencies": {
-    "warpsocket": "link:warpsocket"
+    "warpsocket": "^0.8.1"
   },
   "peerDependencies": {
-    "edinburgh": "link:edinburgh",
-    "aberdeen": "link:aberdeen"
+    "edinburgh": "^0.4.1",
+    "aberdeen": "^1.10.1"
   },
   "devDependencies": {
-    "aberdeen": "link:aberdeen",
+    "aberdeen": "^1.10.1",
+    "readme-tsdoc": "^1.1.4",
     "@types/bun": "^1.3.10"
   },
   "workspaces": [
