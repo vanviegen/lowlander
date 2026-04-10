@@ -12,3 +12,4 @@ types
 .edinburgh_test
 *.tsbuildinfo
 .gdb_history
+.local*

@@ -149,3 +149,39 @@ test('4 connections stream, mutate, and converge', async () => {
     conns[0].api.setOwnerAge(45);
     await passTime();
 });
+
+test('stream direct field mutation', async () => {
+    const c = connect();
+    const model = c.api.streamModel();
+    await passTime();
+    expect(model.value!.name).toBe('Test');
+    await c.api.setModelName('Changed').promise;
+    await passTime();
+    expect(model.value!.name).toBe('Changed');
+    // restore
+    await c.api.setModelName('Test').promise;
+    await passTime();
+});
+
+test('stream record field', async () => {
+    const c = connect();
+    const model = c.api.streamModel();
+    await passTime();
+    expect(model.value!.meta).toEqual({score: 42, level: 7});
+});
+
+test('stream record field mutation', async () => {
+    const c = connect();
+    const model = c.api.streamModel();
+    await passTime();
+    await c.api.setMeta('score', 99).promise;
+    await passTime();
+    expect(model.value!.meta).toEqual({score: 99, level: 7});
+    await c.api.deleteMeta('level').promise;
+    await passTime();
+    expect(model.value!.meta).toEqual({score: 99});
+    // restore
+    await c.api.setMeta('score', 42).promise;
+    await c.api.setMeta('level', 7).promise;
+    await passTime();
+});

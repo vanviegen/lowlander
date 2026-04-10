@@ -35,7 +35,8 @@
     "typecheck": "bun x tsc -b",
     "clean": "rm -rf build dist skill",
     "prepack": "bun install && bun run build",
-    "test": "bun test"
+    "test": "bun test",
+    "postinstall": "[ -f .local-post-install.sh ] && sh .local-post-install.sh || true"
   },
   "dependencies": {
     "warpsocket": "^0.8.1"

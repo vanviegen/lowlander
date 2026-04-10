@@ -71,6 +71,7 @@ class MyModel extends E.Model<MyModel> {
     next = E.field(E.opt(E.link(MyModel)));
     owner = E.field(E.link(Person));
     createdAt = E.field(E.dateTime);
+    meta = E.field(E.record(E.number));
 
     static byId = E.primary(MyModel, 'id');
     static byName = E.unique(MyModel, 'name');
@@ -90,13 +91,13 @@ export async function resetTestData(deleteEverything: boolean) {
         let p2 = Person.byName.get('Alice') || new Person({name: 'Alice', age: 25, password: 'hidden', friends: [p1]});
         let p3 = Person.byName.get('Bob') || new Person({name: 'Bob', age: 65, password: 'himom', friends: [p1, p2]});
         if (p1.getState() === "created") p1.friends = [p2, p3];
-        let m1 = MyModel.byName.get('Test') || new MyModel({name: 'Test', owner: p1});
-        let m2 = MyModel.byName.get('Another') || new MyModel({name: 'Another', owner: p2, next: m1});
+        let m1 = MyModel.byName.get('Test') || new MyModel({name: 'Test', owner: p1, meta: {score: 42, level: 7}});
+        let m2 = MyModel.byName.get('Another') || new MyModel({name: 'Another', owner: p2, next: m1, meta: {}});
         ids = {p1: p1.name, p2: p2.name, m1: m1.id, m2: m2.id};
     });
 }
 resetTestData(false);
-
+``
 await E.transact(() => {
     E.dump();
     for(const p of Person.findAll()) {
@@ -110,6 +111,7 @@ await E.transact(() => {
 const MyStream = createStreamType(MyModel, {
     name: true,
     createdAt: true,
+    meta: true,
     owner: {
         name: true,
         age: true,
@@ -136,6 +138,23 @@ export async function incrOwnerAge(delta: number) {
 export function setOwnerAge(age: number) {
     const m1 = MyModel.byId.get(ids.m1)!;
     m1.owner.age = age;
+}
+
+export function setModelName(name: string) {
+    const m1 = MyModel.byId.get(ids.m1)!;
+    m1.name = name;
+}
+
+export function setMeta(key: string, value: number) {
+    const m1 = MyModel.byId.get(ids.m1)!;
+    m1.meta = {...m1.meta, [key]: value};
+}
+
+export function deleteMeta(key: string) {
+    const m1 = MyModel.byId.get(ids.m1)!;
+    const copy = {...m1.meta};
+    delete copy[key];
+    m1.meta = copy;
 }
 
 
