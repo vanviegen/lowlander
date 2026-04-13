@@ -129,6 +129,24 @@ export function streamPerson(name: string) {
 
 On the client, this returns a reactive Aberdeen proxy that updates live when server data changes.
 
+```ts
+// Client-side
+const person = api.streamPerson('Alice');
+// person.value starts as undefined while loading, and
+// then becomes a live-updating reactive proxy object of Alice's data
+A.dump(person);
+```
+
+Lowlander will keep `person.value` up-to-date as long as the Aberdeen scope containing `api.streamPerson` remains active. When the scope is destroyed, the stream subscription is automatically cancelled.
+
+It's quite common for the same RPC call to be used to get the same stream multiple times in a short period; when navigating back and forth, or when navigating to a new page that requires some of the same data as the previous page. To optimize for this, `createStreamType` accepts an optional `cache` parameter (in seconds). 
+
+```ts
+const PersonStream = createStreamType(Person, fields, { cache: 30 }); // cache for 30s after going out of scope
+```
+
+After a stream with caching goes out of scope, the server keeps it alive for that many seconds, so that if the same stream is requested again with the same parameters, it can be reused instantly without re-sending initial data or re-subscribing to updates. Cached stream rpcs also deduplicate within that time window, so if the same stream is requested multiple times while it's still active or cached, only one stream is created on the server and shared among all requests.
+
 ### ServerProxy for Stateful APIs
 
 Wrap a class instance to expose per-connection stateful methods:

@@ -185,3 +185,83 @@ test('stream record field mutation', async () => {
     await c.api.setMeta('level', 7).promise;
     await passTime();
 });
+
+test('cached stream: linger and reuse', async () => {
+    const c = connect();
+    const show = A.proxy(true);
+    let renders = 0;
+
+    A(() => {
+        if (show.value) {
+            let model = c.api.streamModelCached();
+            A(() => {
+                if (model.value) {
+                    renders++;
+                    A('span#' + model.value.name);
+                }
+            });
+        }
+    });
+    await passTime();
+    assertBody('span{"Test"}');
+
+    // Go out of scope — linger starts
+    show.value = false;
+    await passTime();
+    assertBody('');
+
+    // Reuse within cache window — value immediately available (no undefined→value transition)
+    renders = 0;
+    show.value = true;
+    await passTime();
+    assertBody('span{"Test"}');
+    expect(renders).toBe(1); // only one render, not two (undefined then value)
+
+    // Mutation still propagates through the lingered stream (same channel reused)
+    await c.api.setModelName('Reused').promise;
+    await passTime();
+    assertBody('span{"Reused"}');
+
+    // Restore
+    await c.api.setModelName('Test').promise;
+    await passTime();
+});
+
+test('cached stream: dedup and refcount', async () => {
+    const c = connect();
+    const show = A.proxy(true);
+    let renders = 0;
+
+    // First scope creates the stream and populates the cache
+    let model1: any;
+    A(() => {
+        model1 = c.api.streamModelCached();
+        A(() => {
+            if (model1.value) A('span.a#' + model1.value.name);
+        });
+    });
+    await passTime();
+    assertBody('span.a{"Test"}');
+
+    // Second scope reuses the cached stream — same resultProxy, renders instantly
+    let model2: any;
+    A(() => {
+        if (show.value) {
+            model2 = c.api.streamModelCached();
+            A(() => {
+                if (model2.value) {
+                    renders++;
+                    A('span.b#' + model2.value.name);
+                }
+            });
+        }
+    });
+    assertBody('span.a{"Test"} span.b{"Test"}');
+    expect(model1).toBe(model2); // shared proxy
+    expect(renders).toBe(1); // immediate, no undefined→value cycle
+
+    // Destroy second scope — first still works (refCount > 0, no linger)
+    show.value = false;
+    await passTime();
+    assertBody('span.a{"Test"}');
+});

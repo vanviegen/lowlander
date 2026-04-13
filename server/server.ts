@@ -37,6 +37,7 @@ export abstract class StreamTypeBase<T> {
     /** @internal */
     static id: number;
     /** @internal */
+    static cache: number | undefined;
     constructor(public _instance: E.Model<any> & T) {}
 
     toString() {
@@ -134,6 +135,8 @@ function getIdForData(namespace: string, ...data: any): number {
  * 
  * @param Model - The Edinburgh model class
  * @param selection - Field selection: `true` for simple fields, nested object for linked models
+ * @param options - Optional settings
+ * @param options.cache - Seconds the client should linger the stream after out-of-scope, enabling instant reuse and dedup on repeat calls
  * @returns Stream type class to instantiate in API functions
  * 
  * @example
@@ -146,12 +149,12 @@ function getIdForData(namespace: string, ...data: any): number {
  *   friends = field(array(link(Person)));
  * }
  * 
- * // Exclude password, include friends' names
+ * // Exclude password, include friends' names; cache 30s
  * const PersonStream = createStreamType(Person, {
  *   name: true,
  *   age: true,
  *   friends: { name: true }
- * });
+ * }, { cache: 30 });
  * 
  * export function streamPerson() {
  *   const person = Person.byName.get('Alice')!;
@@ -161,7 +164,8 @@ function getIdForData(namespace: string, ...data: any): number {
  */
 export function createStreamType<T, S extends FieldSelection<T>>(
   Model: ModelClass & (new (...args: any[]) => T),
-  selection: S & ValidateSelection<T, S>
+  selection: S & ValidateSelection<T, S>,
+  options?: { cache?: number }
 ) {
     let streamTypes = streamTypesPerModel.get(Model);
     if (!streamTypes) streamTypesPerModel.set(Model, streamTypes = []);
@@ -187,6 +191,7 @@ export function createStreamType<T, S extends FieldSelection<T>>(
     class StreamType extends StreamTypeBase<Project<T, S>> {
         static fields = fields;
         static id = streamTypeId;
+        static cache = options?.cache;
     }
     streamTypes.push(StreamType);
     return StreamType;

@@ -115,7 +115,8 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
                     pushModel(virtualSocketId, instance, 0, StreamType, 1);
 
                     // Then respond, indicating which row should be top level
-                    pendingSend = () => send(socketId, requestId, SERVER_MESSAGES.response_model, virtualSocketIds, instance.getPrimaryKeyHash() + StreamType.id);
+                    const cacheMs = StreamType.cache !== undefined ? StreamType.cache * 1000 : undefined;
+                    pendingSend = () => send(socketId, requestId, SERVER_MESSAGES.response_model, virtualSocketIds, instance.getPrimaryKeyHash() + StreamType.id, cacheMs);
                 } else {
                     // A regular result
                     pendingSend = () => send(socketId, requestId, SERVER_MESSAGES.response, response, virtualSocketIds);

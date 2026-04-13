@@ -200,6 +200,7 @@ export class Connection<T> {
     /** @internal */
     public _proxyCounter = 0;
     private onlineProxy = A.proxy(false);
+    private streamCache = new Map<string, StreamCacheEntry>();
 
     /**
      * Type-safe proxy to the server-side API. Methods return `PromiseProxy` objects
@@ -337,12 +338,18 @@ export class Connection<T> {
             } else if (type === SERVER_MESSAGES.response_model) {
                 request.virtualSocketIds = pack.read() as number[]; // There must be at least one, for the model stream
                 const dbKey = pack.readNumber();
+                const cacheMs = pack.read() as number | undefined;
                 const obj = request.database?.get(dbKey);
-                if (logLevel >= 2) console.log(`[lowlander] incoming response_model requestId=${requestId} dbKey=${dbKey} obj=${obj}`);
+                if (logLevel >= 2) console.log(`[lowlander] incoming response_model requestId=${requestId} dbKey=${dbKey} cacheMs=${cacheMs} obj=${obj}`);
                 if (obj) {
                     request.resultProxy.value = A.proxy(obj);
                 } else {
                     request.resultProxy.error = new Error('Unknown database key ' + dbKey);
+                }
+                if (cacheMs !== undefined && request.cacheKey && !this.streamCache.has(request.cacheKey)) {
+                    this.streamCache.set(request.cacheKey, {
+                        request, cacheKey: request.cacheKey, cacheMs, refCount: 1,
+                    });
                 }
 
             } else {
@@ -402,6 +409,32 @@ export class Connection<T> {
     /** @internal */
     public _createMethodStub(methodName: string, proxyId?: number) {
         return (...params: any[]) => {
+            // Compute cache key (only when no callback params — callbacks aren't idempotent)
+            const hasCallbacks = params.some(p => typeof p === 'function');
+            const cacheKey = hasCallbacks ? undefined : (proxyId ?? '') + ':' + methodName + ':' + JSON.stringify(params);
+
+            // Check stream cache for reuse
+            if (cacheKey) {
+                const cached = this.streamCache.get(cacheKey);
+                if (cached) {
+                    if (cached.lingerTimeout) {
+                        clearTimeout(cached.lingerTimeout);
+                        cached.lingerTimeout = undefined;
+                    }
+                    cached.refCount++;
+
+                    if (logLevel >= 2) console.log(`[lowlander] reusing cached stream cacheKey=${cacheKey} refCount=${cached.refCount}`);
+
+                    A.clean(() => {
+                        cached.refCount--;
+                        if (logLevel >= 2) console.log(`[lowlander] clean cached consumer cacheKey=${cacheKey} refCount=${cached.refCount}`);
+                        if (cached.refCount <= 0) this.startLinger(cached);
+                    });
+
+                    return cached.request.resultProxy;
+                }
+            }
+
             const result = {busy: true} as PromiseProxy<any> & {promise: Promise<any>} & {serverProxy: any};
             const resultProxy = A.proxy(result);
 
@@ -423,7 +456,7 @@ export class Connection<T> {
                 }
             });
 
-            const request: ActiveRequest = { resultProxy, requestBuffer: pack.toUint8Array(true), requestId, connection: this, callbacks };
+            const request: ActiveRequest = { resultProxy, requestBuffer: pack.toUint8Array(true), requestId, connection: this, callbacks, cacheKey };
             result.serverProxy = new Proxy(request, proxyHandlers);
             result.promise = new Promise((resolve, reject) => {
                 request.resolve = resolve;
@@ -439,21 +472,43 @@ export class Connection<T> {
             }
 
             A.clean(() => {
-                this.activeRequests.delete(requestId);
-                if (request.virtualSocketIds?.length || request.hasServerProxy) {
-                    if (logLevel >= 2) console.log(`[lowlander] outgoing cancel requestId=${request.requestId} virtualSocketIds=${request.virtualSocketIds} hasServerProxy=${request.hasServerProxy}`);
-                    const data = DataPack.createUint8Array(
-                        ++this.requestCounter,
-                        CLIENT_MESSAGES.cancel,
-                        request.requestId,
-                        request.virtualSocketIds,
-                    );
-                    this.ws?.send(data as Uint8Array<ArrayBuffer>);
+                const cached = cacheKey ? this.streamCache.get(cacheKey) : undefined;
+                if (cached && cached.request === request) {
+                    cached.refCount--;
+                    if (logLevel >= 2) console.log(`[lowlander] clean stream owner cacheKey=${cacheKey} refCount=${cached.refCount}`);
+                    if (cached.refCount <= 0) this.startLinger(cached);
+                    return;
                 }
+                this.cancelRequest(request);
             });
 
             return resultProxy;
         }
+    }
+
+    private cancelRequest(request: ActiveRequest) {
+        this.activeRequests.delete(request.requestId);
+        if (request.virtualSocketIds?.length || request.hasServerProxy) {
+            if (logLevel >= 2) console.log(`[lowlander] outgoing cancel requestId=${request.requestId} virtualSocketIds=${request.virtualSocketIds} hasServerProxy=${request.hasServerProxy}`);
+            const data = DataPack.createUint8Array(
+                ++this.requestCounter,
+                CLIENT_MESSAGES.cancel,
+                request.requestId,
+                request.virtualSocketIds,
+            );
+            this.ws?.send(data as Uint8Array<ArrayBuffer>);
+        }
+    }
+
+    private startLinger(cached: StreamCacheEntry) {
+        if (cached.lingerTimeout) clearTimeout(cached.lingerTimeout);
+        if (logLevel >= 2) console.log(`[lowlander] start linger cacheKey=${cached.cacheKey} cacheMs=${cached.cacheMs}`);
+        cached.lingerTimeout = setTimeout(() => {
+            if (cached.refCount > 0) return;
+            if (logLevel >= 2) console.log(`[lowlander] linger expired cacheKey=${cached.cacheKey}`);
+            this.streamCache.delete(cached.cacheKey);
+            this.cancelRequest(cached.request);
+        }, cached.cacheMs);
     }
 }
 
@@ -494,6 +549,15 @@ interface ActiveRequest extends ProxyTargetType {
     requestBuffer: Uint8Array;
     requestId: number; // Client-generated unique ID for this request
     hasServerProxy?: boolean; // When true, the requestId has an object associated on the server side (which needs to be dropped on 'clean')
+    cacheKey?: string; // For stream cache lookup
     resolve?: (value: any) => void;
     reject?: (error: any) => void;
+}
+
+interface StreamCacheEntry {
+    request: ActiveRequest;
+    cacheKey: string;
+    cacheMs: number;
+    refCount: number;
+    lingerTimeout?: ReturnType<typeof setTimeout>;
 }

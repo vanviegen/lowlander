@@ -122,10 +122,20 @@ const MyStream = createStreamType(MyModel, {
     }
 });
 
+const CachedStream = createStreamType(MyModel, {
+    name: true,
+    owner: { name: true },
+}, { cache: 60 });
+
 // Example of model streaming - returns a reactive proxy that auto-updates on changes
 export function streamModel() {
     const m1 = MyModel.byId.get(ids.m1)!;
     return new MyStream(m1);
+}
+
+export function streamModelCached() {
+    const m1 = MyModel.byId.get(ids.m1)!;
+    return new CachedStream(m1);
 }
 
 export async function incrOwnerAge(delta: number) {

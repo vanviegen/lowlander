@@ -1,2 +1,4 @@
 - In all interactions and commit messages, be extremely concise and sacrifice grammar for the sake of concision.
 - Before touching any frontend code (involving the `A` symbol) study the Aberdeen skill.
+- The README.md has a `Client API Reference` and a `Server API Reference` section. Their contents is auto-generated from src/ tsdoc. Don't edit those README sections directly.
+- The skill/ directory is auto-generated from the skill-header.md and README.md. Don't edit any files in skill/ directly.
