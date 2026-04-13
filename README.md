@@ -304,6 +304,26 @@ Supports nested linked models and type-safe field selection.
 **Examples:**
 
 ```ts
+⁣@E.registerModel
+class Person extends Model {
+  name = field(string);
+  age = field(number);
+  password = field(string);
+  friends = field(array(link(Person)));
+}
+
+// Exclude password, include friends' names
+const PersonStream = createStreamType(Person, {
+  name: true,
+  age: true,
+  friends: { name: true }
+});
+
+export function streamPerson() {
+  const person = Person.byName.get('Alice')!;
+  return new PersonStream(person);
+}
+```
 
 ### sendModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L262)
 
@@ -385,9 +405,6 @@ start(API_FILE, { bind: '0.0.0.0:8080' });
 
 **Signature:** `() => string`
 
-**Parameters:**
-
-
 ### ServerProxy · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L349)
 
 Wraps a server-side API object to create a stateful, type-safe proxy accessible from clients.
@@ -422,9 +439,6 @@ export async function authenticate(token: string) {
 #### serverProxy.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L355)
 
 **Signature:** `() => string`
-
-**Parameters:**
-
 
 ### Socket · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L379)
 
@@ -474,27 +488,25 @@ Sends data to the client.
 
 **Signature:** `() => string`
 
-**Parameters:**
-
-
 #### socket.[Symbol.for('nodejs.util.inspect.custom')] · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L405)
 
 **Signature:** `() => string`
-
-**Parameters:**
-
 
 ## Client API Reference
 
 The following is auto-generated from `client/client.ts`:
 
-### logLevel · [variable](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L8)
+### setLogLevel · [function](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L10)
 
-Set to 1-3 for increasing verbosity.
+Set to 0-3 for increasing verbosity.
 
-**Value:** `number`
+**Signature:** `(level: number) => void`
 
-### ClientProxyObject · [type](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L157)
+**Parameters:**
+
+- `level: number`
+
+### ClientProxyObject · [type](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L161)
 
 Transforms server-side API objects to client-side proxy objects with type-safe RPC methods.
 
@@ -502,7 +514,7 @@ Transforms server-side API objects to client-side proxy objects with type-safe R
     [K in keyof T]: ClientProxyFunction<T[K]>
 }`
 
-### Connection · [class](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L190)
+### Connection · [class](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L194)
 
 WebSocket connection to a Lowlander server with type-safe RPC, automatic reconnection,
 and reactive updates.
@@ -538,27 +550,27 @@ $(() => {
 
 - `url`: - WebSocket URL (e.g., 'ws://localhost:8080/'), or a fake WebSocket object for testing
 
-#### connection.ws · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L192)
+#### connection.ws · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L196)
 
 **Type:** `WebSocket`
 
-#### connection.activeRequests · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L193)
+#### connection.activeRequests · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L197)
 
 **Type:** `Map<number, ActiveRequest>`
 
-#### connection.requestCounter · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L194)
+#### connection.requestCounter · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L198)
 
 **Type:** `number`
 
-#### connection.reconnectAttempts · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L195)
+#### connection.reconnectAttempts · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L199)
 
 **Type:** `number`
 
-#### connection.onlineProxy · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L198)
+#### connection.onlineProxy · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L202)
 
 **Type:** `ValueRef<boolean>`
 
-#### connection.api · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L205)
+#### connection.api · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L209)
 
 Type-safe proxy to the server-side API. Methods return `PromiseProxy` objects
 that work reactively in Aberdeen scopes. `ServerProxy` returns include a
@@ -566,30 +578,21 @@ that work reactively in Aberdeen scopes. `ServerProxy` returns include a
 
 **Type:** `ClientProxyObject<T>`
 
-#### connection.isOnline · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L218)
+#### connection.isOnline · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L222)
 
 Returns the current connection status. Reactive in Aberdeen scopes.
 
 **Signature:** `() => boolean`
 
-**Parameters:**
-
-
-#### connection.connect · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L220)
+#### connection.connect · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L224)
 
 **Signature:** `() => void`
 
-**Parameters:**
-
-
-#### connection.reconnect · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L374)
+#### connection.reconnect · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L378)
 
 **Signature:** `() => void`
 
-**Parameters:**
-
-
-#### connection.pruneCommitIds · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L388)
+#### connection.pruneCommitIds · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L392)
 
 **Signature:** `(request: ActiveRequest, maxCommitId: number) => void`
 

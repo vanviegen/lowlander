@@ -1,6 +1,6 @@
 {
   "name": "lowlander",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "TypeScript framework for data persistence, type-safe RPCs and real-time (partial) client synchronization.",
   "type": "module",
   "main": "./build/server/server.js",
@@ -31,7 +31,7 @@
   ],
   "scripts": {
     "build": "tsc -b && cp -rf examples/helloworld/client/assets examples/helloworld/client/index.html build/examples/helloworld/client/ && npm run build:docs",
-    "build:docs": "readme-tsdoc && mkdir -p skill && cat skill-header.md README.md > skill/SKILL.md && readme-tsdoc --repo-url https://github.com/vanviegen/lowlander",
+    "build:docs": "rm -rf skill ; mkdir skill ; cat skill-header.md README.md > skill/SKILL.md && readme-tsdoc --split --file skill/SKILL.md && readme-tsdoc --repo-url https://github.com/vanviegen/lowlander",
     "typecheck": "bun x tsc -b",
     "clean": "rm -rf build dist skill",
     "prepack": "bun install && bun run build",
@@ -48,7 +48,7 @@
   "devDependencies": {
     "@types/bun": "^1.3.10",
     "aberdeen": "^1.10.1",
-    "readme-tsdoc": "^1.1.4"
+    "readme-tsdoc": "^1.1.6"
   },
   "workspaces": [
     "examples/*"

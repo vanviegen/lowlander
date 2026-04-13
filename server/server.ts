@@ -138,7 +138,7 @@ function getIdForData(namespace: string, ...data: any): number {
  * 
  * @example
  * ```ts
- * @registerModel
+ * ⁣@E.registerModel
  * class Person extends Model {
  *   name = field(string);
  *   age = field(number);

@@ -4,8 +4,12 @@ import DataPack from 'edinburgh/datapack';
 import { SERVER_MESSAGES, CLIENT_MESSAGES } from '../server/protocol.js';
 import type { PromiseProxy } from 'aberdeen';
 
-/** Set to 1-3 for increasing verbosity. */
-export let logLevel = 0;
+let logLevel = 0;
+
+/** Set to 0-3 for increasing verbosity. */
+export function setLogLevel(level: number) {
+    logLevel = level;
+}
 
 // Sentinel key in commitIds entries: on initial creation, only DEFAULT_COMMIT is set
 // (applies to all keys). Per-key entries are added on subsequent updates and take
@@ -231,7 +235,7 @@ export class Connection<T> {
             this.reconnectAttempts = 0;
             for(const request of this.activeRequests.values()) {
                 request.resultProxy.busy = true;
-                this.ws!.send(request.requestBuffer);
+                this.ws!.send(request.requestBuffer as Uint8Array<ArrayBuffer>);
             }
         };
         
@@ -431,7 +435,7 @@ export class Connection<T> {
             if (logLevel >= 2) console.log(`[lowlander] outgoing call requestId=${requestId} method=${methodName} params=`, params);
 
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(request.requestBuffer);
+                this.ws.send(request.requestBuffer as Uint8Array<ArrayBuffer>);
             }
 
             A.clean(() => {
@@ -444,7 +448,7 @@ export class Connection<T> {
                         request.requestId,
                         request.virtualSocketIds,
                     );
-                    this.ws?.send(data);
+                    this.ws?.send(data as Uint8Array<ArrayBuffer>);
                 }
             });
 
