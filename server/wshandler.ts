@@ -41,7 +41,18 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
         // Delete server proxy object, if any
         const cancelRequestId = pack.readPositiveInt();
         const proxies = socketProxies.get(socketId);
-        if (proxies) proxies.delete(cancelRequestId);
+        if (proxies) {
+            /** Call `onDrop()` on a proxy if it has one. Runs in a transaction; errors are logged. */
+            const proxy = proxies.get(cancelRequestId);
+            proxies.delete(cancelRequestId);
+            if (proxy && typeof proxy.onDrop === 'function') {
+                try {
+                    await E.transact(() => proxy.onDrop());
+                } catch (err: any) {
+                    console.error('cancel request onDrop error', err);
+                }
+            }
+        }
 
         // Delete any virtual sockets created for this request
         for(const virtualSocketId of pack.read() || []) {
@@ -88,20 +99,24 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
         }
 
         try {
-            let pendingSend: (() => void) | undefined;
+            let pendingPacket: Uint8Array | undefined;
             await E.transact(async () => {
                 let response = await func.apply(api, params);
                 if (logLevel >= 2) console.log('[lowlander] Called', methodName, 'with', params, '->', typeof response === 'object' && response ? response.toString() : JSON.stringify(response));
 
-                // Result processing/sending should be within the transaction, as it may involve (lazy) loading models
+                // Result processing/serialization should be within the transaction, as it may involve (lazy) loading models.
+                // The actual socket send remains deferred until after commit.
 
                 if (response instanceof ServerProxy) {
+                    if (response.value instanceof StreamTypeBase) {
+                        throw new Error('ServerProxy values cannot be streamed models; return the stream directly or from a proxy method instead');
+                    }
                     let proxies = socketProxies.get(socketId);
                     if (!proxies) socketProxies.set(socketId, proxies = new Map());
                     if (logLevel >= 3) console.log('[lowlander] Setting proxy id', requestId, 'for socket', socketId);
                     proxies.set(requestId, response.api);
-                    
-                    pendingSend = () => send(socketId, requestId, SERVER_MESSAGES.response_proxy, response.value, virtualSocketIds);
+
+                    pendingPacket = DataPack.createUint8Array(requestId, SERVER_MESSAGES.response_proxy, response.value, virtualSocketIds);
 
                 } else if (response instanceof StreamTypeBase) {
                     const StreamType = response.constructor as typeof StreamTypeBase<any>;
@@ -116,14 +131,14 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
 
                     // Then respond, indicating which row should be top level
                     const cacheMs = StreamType.cache !== undefined ? StreamType.cache * 1000 : undefined;
-                    pendingSend = () => send(socketId, requestId, SERVER_MESSAGES.response_model, virtualSocketIds, instance.getPrimaryKeyHash() + StreamType.id, cacheMs);
+                    pendingPacket = DataPack.createUint8Array(requestId, SERVER_MESSAGES.response_model, virtualSocketIds, instance.getPrimaryKeyHash() + StreamType.id, cacheMs);
                 } else {
                     // A regular result
-                    pendingSend = () => send(socketId, requestId, SERVER_MESSAGES.response, response, virtualSocketIds);
+                    pendingPacket = DataPack.createUint8Array(requestId, SERVER_MESSAGES.response, response, virtualSocketIds);
                 }
             });
             // Send response after transaction has committed
-            pendingSend!();
+            warpsocket.send(socketId, pendingPacket!);
         } catch (error: any) {
             console.error('RPC error', error);
             sendError(socketId, requestId, error.message || 'Internal error');
@@ -133,7 +148,22 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
     }
 }
 
-export function handleClose(socketId: number) {
+export async function handleClose(socketId: number) {
     if (logLevel >= 1) console.log('[lowlander] Client disconnected', socketId);
+    const proxies = socketProxies.get(socketId);
+    if (!proxies) return;
     socketProxies.delete(socketId);
+    if (!proxies.values().some(p => typeof p.onDrop === 'function')) return;
+    
+    await E.transact(async () => {
+        for (const proxy of proxies.values()) {
+            if (typeof proxy?.onDrop === 'function') {
+                try {
+                    await proxy.onDrop();
+                } catch (err: any) {
+                    console.error('handleClose onDrop error', err);
+                }
+            }
+        }
+    });
 }

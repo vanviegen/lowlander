@@ -88,14 +88,12 @@ Define persistent data models using Edinburgh. See [Edinburgh docs](https://gith
 ```ts
 import * as E from 'edinburgh';
 
-@E.registerModel
-class Person extends E.Model<Person> {
-    static byName = E.primary(Person, 'name');
+const Person = E.defineModel('Person', class {
     name = E.field(E.string);
     age = E.field(E.number);
-    friends = E.field(E.array(E.link(Person)));
+    friends = E.field(E.array(E.link(() => Person)));
     password = E.field(E.string);
-}
+}, { pk: 'name' });
 ```
 
 Models are ACID, and RPC calls automatically run in transactions. When creating a `new Instance()` or updating props on an existing instance, changes are persisted to disk automatically. `E.link` objects are lazy-loaded.
@@ -122,7 +120,7 @@ Use `true` for plain fields. For linked model fields, provide a nested selection
 
 ```ts
 export function streamPerson(name: string) {
-    const person = Person.byName.get(name)!;
+    const person = Person.getBy('name', name)!;
     return new PersonStream(person);
 }
 ```
@@ -152,13 +150,14 @@ After a stream with caching goes out of scope, the server keeps it alive for tha
 Wrap a class instance to expose per-connection stateful methods:
 
 ```ts
+// server-side api
 import { ServerProxy } from 'lowlander/server';
 
 class UserAPI {
     constructor(public userName: string) {}
     
     get user(): Person {
-        return Person.byName.get(this.userName)!;
+        return Person.getBy('name', this.userName)!;
     }
 
     getBio() {
@@ -167,13 +166,21 @@ class UserAPI {
 }
 
 export async function authenticate(token: string) {
-    const user = Person.byName.get(token);
+    const user = Person.getBy('name', token);
     if (!user) throw new Error('User not found');
     return new ServerProxy(new UserAPI(token), 'secret-value');
 }
 ```
 
 The client receives `'secret-value'` as `.value` and can call `UserAPI` methods via `.serverProxy`.
+
+When a proxy is dropped, because the request's Aberdeen scope was destroyed or the WebSocket disconnected, Lowlander calls `onDrop()` on the API object if it exists, letting you clean up server-side state.
+
+```ts
+// client-side
+const auth = api.authenticate('Alice');
+dump(auth.serverProxy.getBio());
+```
 
 ### Socket Callbacks
 
@@ -298,14 +305,14 @@ Set `EDINBURGH_LOG_LEVEL` similarly for Edinburgh internals.
 
 The following is auto-generated from `server/server.ts`:
 
-### createStreamType · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L162)
+### createStreamType · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L161)
 
 Creates a stream type for reactive model streaming to clients with automatic updates.
 
 Specify which fields to include; when they change, updates are pushed to subscribed clients.
 Supports nested linked models and type-safe field selection.
 
-**Signature:** `<T, S extends FieldSelection<T>>(Model: typeof E.Model<unknown> & (new (...args: any[]) => T), selection: S & ValidateSelection<T, S>) => typeof StreamType`
+**Signature:** `<T, S extends FieldSelection<T>>(Model: (new () => any) & ModelClassRuntime<any, readonly any[], any, any> & (new (initial?: Partial<any>, txn?: Transaction) => any) & (new (...args: any[]) => T), selection: S & ValidateSelection<...>, options?: { ...; }) => typeof StreamType`
 
 **Type Parameters:**
 
@@ -314,31 +321,31 @@ Supports nested linked models and type-safe field selection.
 
 **Parameters:**
 
-- `Model: ModelClass & (new (...args: any[]) => T)` - - The Edinburgh model class
+- `Model: E.AnyModelClass & (new (...args: any[]) => T)` - - The Edinburgh model class
 - `selection: S & ValidateSelection<T, S>` - - Field selection: `true` for simple fields, nested object for linked models
+- `options?: { cache?: number }` - - Optional settings
 
 **Returns:** Stream type class to instantiate in API functions
 
 **Examples:**
 
 ```ts
-⁣@E.registerModel
-class Person extends Model {
-  name = field(string);
-  age = field(number);
-  password = field(string);
-  friends = field(array(link(Person)));
-}
+const Person = E.defineModel('Person', class {
+  name = E.field(E.string);
+  age = E.field(E.number);
+  password = E.field(E.string);
+  friends = E.field(E.array(E.link(() => Person)));
+}, { pk: 'name' });
 
-// Exclude password, include friends' names
+// Exclude password, include friends' names; cache 30s
 const PersonStream = createStreamType(Person, {
   name: true,
   age: true,
   friends: { name: true }
-});
+}, { cache: 30 });
 
 export function streamPerson() {
-  const person = Person.byName.get('Alice')!;
+  const person = Person.get('Alice')!;
   return new PersonStream(person);
 }
 ```
@@ -348,7 +355,7 @@ export function streamPerson() {
 Sends (updated) data for `model` to `target`.
 `target` is a virtual socket with a requestId+'d' user prefix, or a channel that subscribes such virtual sockets.
 
-**Signature:** `(target: number | Uint8Array<ArrayBufferLike> | number[], model: Model<any>, commitId: number, StreamType: typeof StreamTypeBase<any>, changed?: Change) => void`
+**Signature:** `(target: number | Uint8Array<ArrayBufferLike> | number[], model: any, commitId: number, StreamType: typeof StreamTypeBase<any>, changed?: Change) => void`
 
 **Parameters:**
 
@@ -363,7 +370,7 @@ Sends (updated) data for `model` to `target`.
 Subscribes `target` to this model, and sends initial data.
 `target` is a virtual socket with a requestId+'d' user prefix, or a channel that subscribes such virtual sockets.
 
-**Signature:** `(target: number | Uint8Array<ArrayBufferLike> | number[], model: Model<any>, commitId: number, SubStreamType: typeof StreamTypeBase<any>, delta: number) => void`
+**Signature:** `(target: number | Uint8Array<ArrayBufferLike> | number[], model: any, commitId: number, SubStreamType: typeof StreamTypeBase<any>, delta: number) => void`
 
 **Parameters:**
 
@@ -373,7 +380,7 @@ Subscribes `target` to this model, and sends initial data.
 - `SubStreamType: typeof StreamTypeBase<any>`
 - `delta: number`
 
-### start · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L428)
+### start · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L433)
 
 Starts the Lowlander WebSocket server.
 
@@ -403,7 +410,7 @@ start(API_FILE, { bind: '0.0.0.0:8080' });
 
 **Type:** `typeof import("/var/home/frank/projects/warpsocket/dist/src/index", { with: { "resolution-mode": "import" } })`
 
-### StreamTypeBase · [abstract class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L34)
+### StreamTypeBase · [abstract class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L31)
 
 [object Object],[object Object],[object Object]
 
@@ -411,22 +418,30 @@ start(API_FILE, { bind: '0.0.0.0:8080' });
 
 - `T`
 
-#### StreamTypeBase.fields · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L36)
+#### StreamTypeBase.fields · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L33)
 
 **Type:** `{ [key: string]: number | true; }`
 
-#### StreamTypeBase.id · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L38)
+#### StreamTypeBase.id · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L35)
 
 **Type:** `number`
 
-#### streamTypeBase.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L42)
+#### StreamTypeBase.cache · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L37)
+
+**Type:** `number`
+
+#### streamTypeBase.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L40)
 
 **Signature:** `() => string`
 
-### ServerProxy · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L349)
+### ServerProxy · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L354)
 
 Wraps a server-side API object to create a stateful, type-safe proxy accessible from clients.
 Use for authentication, sessions, or any stateful context that persists across RPC calls.
+
+If the API object has an `onDrop()` method, it is called when the proxy is dropped, either
+because the client cancelled the request (scope cleanup) or the WebSocket disconnected.
+Use this to clean up server-side state kept on behalf of the client.
 
 **Type Parameters:**
 
@@ -439,6 +454,7 @@ Use for authentication, sessions, or any stateful context that persists across R
 export class UserAPI {
   constructor(public user: User) {}
   getSecret() { return this.user.secret; }
+  onDrop() { console.log('client gone'); }
 }
 
 export async function authenticate(token: string) {
@@ -454,11 +470,11 @@ export async function authenticate(token: string) {
 - `api`: - Server-side API object exposed to the client
 - `value`: - Value returned immediately to the client
 
-#### serverProxy.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L355)
+#### serverProxy.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L360)
 
 **Signature:** `() => string`
 
-### Socket · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L379)
+### Socket · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L384)
 
 Server-side socket for pushing data to a client. Server functions with `Socket<T>` parameters
 receive client callbacks on the client side.
@@ -481,7 +497,7 @@ export function streamNumbers(socket: Socket<number>) {
 api.streamNumbers(num => console.log(num));
 ```
 
-#### socket.send · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L388)
+#### socket.send · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L393)
 
 Sends data to the client.
 
@@ -493,7 +509,7 @@ Sends data to the client.
 
 **Returns:** `true` if sent, `false` if socket is closed
 
-#### socket.subscribe · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L394)
+#### socket.subscribe · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L399)
 
 **Signature:** `(channel: Uint8Array<ArrayBufferLike>, delta?: number) => void`
 
@@ -502,11 +518,11 @@ Sends data to the client.
 - `channel: Uint8Array`
 - `delta: any` (optional)
 
-#### socket.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L401)
+#### socket.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L406)
 
 **Signature:** `() => string`
 
-#### socket.[Symbol.for('nodejs.util.inspect.custom')] · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L405)
+#### socket.[Symbol.for('nodejs.util.inspect.custom')] · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L410)
 
 **Signature:** `() => string`
 
@@ -524,7 +540,7 @@ Set to 0-3 for increasing verbosity.
 
 - `level: number`
 
-### ClientProxyObject · [type](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L161)
+### ClientProxyObject · [type](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L159)
 
 Transforms server-side API objects to client-side proxy objects with type-safe RPC methods.
 
@@ -532,7 +548,7 @@ Transforms server-side API objects to client-side proxy objects with type-safe R
     [K in keyof T]: ClientProxyFunction<T[K]>
 }`
 
-### Connection · [class](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L194)
+### Connection · [class](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L192)
 
 WebSocket connection to a Lowlander server with type-safe RPC, automatic reconnection,
 and reactive updates.
@@ -568,27 +584,31 @@ $(() => {
 
 - `url`: - WebSocket URL (e.g., 'ws://localhost:8080/'), or a fake WebSocket object for testing
 
-#### connection.ws · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L196)
+#### connection.ws · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L194)
 
 **Type:** `WebSocket`
 
-#### connection.activeRequests · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L197)
+#### connection.activeRequests · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L195)
 
 **Type:** `Map<number, ActiveRequest>`
 
-#### connection.requestCounter · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L198)
+#### connection.requestCounter · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L196)
 
 **Type:** `number`
 
-#### connection.reconnectAttempts · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L199)
+#### connection.reconnectAttempts · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L197)
 
 **Type:** `number`
 
-#### connection.onlineProxy · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L202)
+#### connection.onlineProxy · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L200)
 
 **Type:** `ValueRef<boolean>`
 
-#### connection.api · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L209)
+#### connection.streamCache · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L201)
+
+**Type:** `Map<string, StreamCacheEntry>`
+
+#### connection.api · [property](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L208)
 
 Type-safe proxy to the server-side API. Methods return `PromiseProxy` objects
 that work reactively in Aberdeen scopes. `ServerProxy` returns include a
@@ -596,21 +616,21 @@ that work reactively in Aberdeen scopes. `ServerProxy` returns include a
 
 **Type:** `ClientProxyObject<T>`
 
-#### connection.isOnline · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L222)
+#### connection.isOnline · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L221)
 
 Returns the current connection status. Reactive in Aberdeen scopes.
 
 **Signature:** `() => boolean`
 
-#### connection.connect · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L224)
+#### connection.connect · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L223)
 
 **Signature:** `() => void`
 
-#### connection.reconnect · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L378)
+#### connection.reconnect · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L383)
 
 **Signature:** `() => void`
 
-#### connection.pruneCommitIds · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L392)
+#### connection.pruneCommitIds · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L397)
 
 **Signature:** `(request: ActiveRequest, maxCommitId: number) => void`
 
@@ -618,4 +638,20 @@ Returns the current connection status. Reactive in Aberdeen scopes.
 
 - `request: ActiveRequest`
 - `maxCommitId: number`
+
+#### connection.cancelRequest · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L487)
+
+**Signature:** `(request: ActiveRequest) => void`
+
+**Parameters:**
+
+- `request: ActiveRequest`
+
+#### connection.startLinger · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L501)
+
+**Signature:** `(cached: StreamCacheEntry) => void`
+
+**Parameters:**
+
+- `cached: StreamCacheEntry`
 

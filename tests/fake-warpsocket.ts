@@ -393,11 +393,14 @@ export function createClientSocket(): WebSocket {
             if (socket.readyState >= 2) return;
             socket.readyState = 2; // CLOSING
             clientSockets.delete(socketId);
-            setTimeout(() => {
-                socket.readyState = 3; // CLOSED
-                workerModule.handleClose?.(socketId);
-                socket.onclose?.();
-            }, 0);
+            messageQueue = messageQueue.then(() => new Promise<void>(resolve => {
+                setTimeout(async () => {
+                    socket.readyState = 3; // CLOSED
+                    await workerModule.handleClose?.(socketId);
+                    socket.onclose?.();
+                    resolve();
+                }, 0);
+            }));
         },
     };
 

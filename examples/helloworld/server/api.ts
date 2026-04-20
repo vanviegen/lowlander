@@ -14,7 +14,7 @@ export class UserAPI {
     constructor(public userName: string) {}
 
     get user(): Person {
-        const result = Person.byName.get(this.userName);
+        const result = Person.get(this.userName);
         if (!result) throw new Error(`User '${this.userName}' not found`);
         return result;
     }
@@ -30,52 +30,59 @@ export class UserAPI {
                 return true;
             }
         }
-        const friend = Person.byName.get(friendName);
+        const friend = Person.get(friendName);
         if (!friend) return false;
         this.user.friends.push(friend);
         return true;
     }
 
-    // admin() {
-    //     if (this.user.name !== 'Frank') {
-    //         throw new Error('Access denied');
-    //     }
-    //     return new ServerProxy(admin);
-    // }
+    onDrop() {
+        this.user.onlineCount--;
+    }
 }
 
 // Authentication example - returns a ServerProxy with both a value and API object
 export async function authenticate(auth: string) {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    const user = Person.byName.get(auth);
+    const user = Person.get(auth);
     if (!user) throw new Error('User not found');
+    user.onlineCount++;
     // Client receives 'secret' as .value and UserAPI methods via .serverProxy
     return new ServerProxy(new UserAPI(auth), 'secret');
 }
 
-
-// Edinburgh model definitions
-@E.registerModel
-class Person extends E.Model<Person> {
-    static byName = E.primary(Person, 'name');
-    name = E.field(E.string);
-    age = E.field(E.number);
-    friends = E.field(E.array(E.link(Person)));
-    password = E.field(E.string);
+export function getOnlineUsers() {
+    return [...Person.findBy('online')].map(p => p.name);
 }
 
-@E.registerModel
-class MyModel extends E.Model<MyModel> {
+export function greet(name: string, greeting: string = 'Hello') {
+    return `${greeting}, ${name}!`;
+}
+
+
+// Edinburgh model definitions
+const Person = E.defineModel('Person', class {
+    name = E.field(E.string);
+    age = E.field(E.number);
+    friends = E.field(E.array(E.link(() => Person)));
+    password = E.field(E.string);
+    onlineCount = E.field(E.number);
+}, {
+    pk: 'name',
+    index: { online: (p: any) => p.onlineCount > 0 ? [true] : [] },
+});
+type Person = InstanceType<typeof Person>;
+
+const MyModel = E.defineModel('MyModel', class {
     id = E.field(E.identifier);
     name = E.field(E.string);
-    next = E.field(E.opt(E.link(MyModel)));
+    next = E.field(E.opt(E.link(() => MyModel)));
     owner = E.field(E.link(Person));
     createdAt = E.field(E.dateTime);
     meta = E.field(E.record(E.number));
-
-    static byId = E.primary(MyModel, 'id');
-    static byName = E.unique(MyModel, 'name');
-}
+}, {
+    pk: 'id',
+    unique: { name: 'name' },
+});
 
 let ids: {p1: string, p2: string, m1: string, m2: string};
 export async function resetTestData(deleteEverything: boolean) {
@@ -87,12 +94,14 @@ export async function resetTestData(deleteEverything: boolean) {
     // in a new (nested) transaction, as deleteEverything will have done *its* work in separate transactions
     // as well, and we need access to its results.
     await E.transact(() => {
-        let p1 = Person.byName.get('Frank') || new Person({name: 'Frank', age: 45, password: 'secret'});
-        let p2 = Person.byName.get('Alice') || new Person({name: 'Alice', age: 25, password: 'hidden', friends: [p1]});
-        let p3 = Person.byName.get('Bob') || new Person({name: 'Bob', age: 65, password: 'himom', friends: [p1, p2]});
+        let p1 = Person.get('Frank') || new Person({name: 'Frank', age: 45, password: 'secret'});
+        let p2 = Person.get('Alice') || new Person({name: 'Alice', age: 25, password: 'hidden', friends: [p1]});
+        let p3 = Person.get('Bob') || new Person({name: 'Bob', age: 65, password: 'himom', friends: [p1, p2]});
         if (p1.getState() === "created") p1.friends = [p2, p3];
-        let m1 = MyModel.byName.get('Test') || new MyModel({name: 'Test', owner: p1, meta: {score: 42, level: 7}});
-        let m2 = MyModel.byName.get('Another') || new MyModel({name: 'Another', owner: p2, next: m1, meta: {}});
+        // Reset onlineCount on startup (no clients connected yet)
+        for (const p of [p1, p2, p3]) p.onlineCount = 0;
+        let m1 = MyModel.getBy('name', 'Test') || new MyModel({name: 'Test', owner: p1, meta: {score: 42, level: 7}});
+        let m2 = MyModel.getBy('name', 'Another') || new MyModel({name: 'Another', owner: p2, next: m1, meta: {}});
         ids = {p1: p1.name, p2: p2.name, m1: m1.id, m2: m2.id};
     });
 }
@@ -100,7 +109,7 @@ resetTestData(false);
 ``
 await E.transact(() => {
     E.dump();
-    for(const p of Person.findAll()) {
+    for(const p of Person.find()) {
         console.log('Person:', p.name, 'age', p.age, 'friends', p.friends.map(f => f.name).join(','), 'password', p.password);
     }
 });
@@ -129,39 +138,39 @@ const CachedStream = createStreamType(MyModel, {
 
 // Example of model streaming - returns a reactive proxy that auto-updates on changes
 export function streamModel() {
-    const m1 = MyModel.byId.get(ids.m1)!;
+    const m1 = MyModel.get(ids.m1)!;
     return new MyStream(m1);
 }
 
 export function streamModelCached() {
-    const m1 = MyModel.byId.get(ids.m1)!;
+    const m1 = MyModel.get(ids.m1)!;
     return new CachedStream(m1);
 }
 
 export async function incrOwnerAge(delta: number) {
-    const m1 = MyModel.byId.get(ids.m1)!;
+    const m1 = MyModel.get(ids.m1)!;
     const current = m1.owner.age;
     await new Promise(resolve => setTimeout(resolve, 50));
     m1.owner.age = current + delta;
 }
 
 export function setOwnerAge(age: number) {
-    const m1 = MyModel.byId.get(ids.m1)!;
+    const m1 = MyModel.get(ids.m1)!;
     m1.owner.age = age;
 }
 
 export function setModelName(name: string) {
-    const m1 = MyModel.byId.get(ids.m1)!;
+    const m1 = MyModel.get(ids.m1)!;
     m1.name = name;
 }
 
 export function setMeta(key: string, value: number) {
-    const m1 = MyModel.byId.get(ids.m1)!;
+    const m1 = MyModel.get(ids.m1)!;
     m1.meta = {...m1.meta, [key]: value};
 }
 
 export function deleteMeta(key: string) {
-    const m1 = MyModel.byId.get(ids.m1)!;
+    const m1 = MyModel.get(ids.m1)!;
     const copy = {...m1.meta};
     delete copy[key];
     m1.meta = copy;

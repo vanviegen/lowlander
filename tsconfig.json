@@ -3,7 +3,7 @@
     "target": "es2022",
     "experimentalDecorators": true,
     "module": "ESNext",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "ESNext.Iterator"],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "resolveJsonModule": true,

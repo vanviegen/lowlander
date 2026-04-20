@@ -5,7 +5,7 @@
     "": {
       "name": "lowlander",
       "dependencies": {
-        "warpsocket": "^0.8.1",
+        "warpsocket": "^0.8.3",
       },
       "devDependencies": {
         "@types/bun": "^1.3.10",
@@ -14,7 +14,7 @@
       },
       "peerDependencies": {
         "aberdeen": "^1.10.1",
-        "edinburgh": "^0.4.1",
+        "edinburgh": "^0.6.0",
       },
     },
     "examples/helloworld": {
@@ -234,7 +234,7 @@
 
     "unique-slug": ["unique-slug@5.0.0", "", { "dependencies": { "imurmurhash": "^0.1.4" } }, "sha512-9OdaqO5kwqR+1kVgHAhsp5vPNU0hnxRa26rBFNfNgM7M6pNtgzeBn3s/xbyCQL3dcjzOatcef6UUHpB/6MaETg=="],
 
-    "warpsocket": ["warpsocket@0.8.2", "", {}, "sha512-o4irlhRvbKbE53t7ufToTNNb0WTGXNIPA16VVxZN7qTjE1jk6PRBdxZZJcOAtvly+igxmNiPfdNKtS96SVXjjA=="],
+    "warpsocket": ["warpsocket@0.8.3", "", {}, "sha512-K3uF9ZuYRHP7T/if5tX5q6IkIE4n+3w9Ju0aDS+ocPm2hNG5MPgLRQEopvzqoSJ5iziQdIjZSWEjaE/jJlF4sA=="],
 
     "which": ["which@5.0.0", "", { "dependencies": { "isexe": "^3.1.1" }, "bin": { "node-which": "bin/which.js" } }, "sha512-JEdGzHwwkrbWoGOlIHqQ5gtprKGOenpDHpxE9zVR1bWbOtYRyPPHMe9FaP6x61CmNaTThSkb0DAJte5jD+DmzQ=="],
 

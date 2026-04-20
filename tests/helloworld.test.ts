@@ -265,3 +265,50 @@ test('cached stream: dedup and refcount', async () => {
     await passTime();
     assertBody('span.a{"Test"}');
 });
+
+test('onDrop: scope destroy decrements onlineCount', async () => {
+    const c = connect();
+    const show = A.proxy(true);
+    let auth: any;
+    A(() => {
+        if (show.value) {
+            auth = c.api.authenticate('Frank');
+        }
+    });
+    await auth.promise;
+    let online = await c.api.getOnlineUsers().promise;
+    expect(online).toEqual(['Frank']);
+
+    // Destroy scope → cancel → onDrop
+    show.value = false;
+    await passTime(100);
+    online = await c.api.getOnlineUsers().promise;
+    expect(online).toEqual([]);
+});
+
+test('onDrop: websocket close decrements onlineCount', async () => {
+    const c = connect();
+    await c.api.authenticate('Frank').promise;
+
+    const c2 = connect();
+    let online = await c2.api.getOnlineUsers().promise;
+    expect(online).toEqual(['Frank']);
+
+    // Close the first connection's underlying socket.
+    // Bun.sleep gives the real event loop time to complete the onDrop E.transact()
+    // commit — we can't await it because there's no handle on the close-triggered cleanup.
+    (c as any).ws.close();
+    await passTime(100);
+    await Bun.sleep(10);
+    online = await c2.api.getOnlineUsers().promise;
+    expect(online).toEqual([]);
+});
+
+test('RPC with default parameter', async () => {
+    const c = connect();
+    const r1 = c.api.greet('Alice');
+    const r2 = c.api.greet('Alice', 'Hi');
+    await passTime();
+    expect(r1.value).toBe('Hello, Alice!');
+    expect(r2.value).toBe('Hi, Alice!');
+});

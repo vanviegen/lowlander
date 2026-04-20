@@ -2,7 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "composite": true,
-    "lib": ["ES2020", "ESNext.WeakRef"],
+    "lib": ["ES2020", "ESNext.WeakRef", "ESNext.Iterator"],
     "types": ["bun"],
     "declaration": true,
     "declarationMap": true,

@@ -30,9 +30,7 @@ type ClientProxyArg<A> = A extends Socket<infer U>
  * 
  * @typeParam Args - Tuple of server-side argument types
  */
-type ClientProxyArgs<Args extends any[]> = Args extends [infer A, ...infer Rest]
-    ? [ClientProxyArg<A>, ...ClientProxyArgs<Rest>]
-    : [];
+type ClientProxyArgs<Args extends any[]> = { [K in keyof Args]: ClientProxyArg<Args[K]> };
 
 /**
  * Transforms server-side return types for client-side use.

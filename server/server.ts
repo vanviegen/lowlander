@@ -21,11 +21,8 @@ const WSHANDLER_FILE = resolve(dirname(fileURLToPath(import.meta.url)), 'wshandl
 const CHANNEL_TYPE_MODEL = 1;
 
 /** @internal Registry mapping model classes to their stream types */
-const streamTypesPerModel: Map<ModelClass, typeof StreamTypeBase<unknown>[]> = new Map();
-
-/** @internal Type alias for Edinburgh model classes */
-type ModelClass = typeof E.Model<unknown>;
-
+const streamTypesPerModel: Map<E.AnyModelClass, typeof StreamTypeBase<unknown>[]> = new Map();
+ 
 /**
  * Base class for stream types created by {@link createStreamType}.
  * @typeParam T - The projected model type
@@ -38,10 +35,10 @@ export abstract class StreamTypeBase<T> {
     static id: number;
     /** @internal */
     static cache: number | undefined;
-    constructor(public _instance: E.Model<any> & T) {}
+    constructor(public _instance: E.Model<unknown> & T) {}
 
     toString() {
-        let streamTypes = streamTypesPerModel.get(this._instance.constructor as ModelClass) || [];
+        let streamTypes = streamTypesPerModel.get(this._instance.constructor) || [];
         return `{Stream model=${this._instance.toString()} type=${streamTypes.indexOf(this.constructor as any)}}`;
     }
 }
@@ -141,13 +138,12 @@ function getIdForData(namespace: string, ...data: any): number {
  * 
  * @example
  * ```ts
- * ⁣@E.registerModel
- * class Person extends Model {
- *   name = field(string);
- *   age = field(number);
- *   password = field(string);
- *   friends = field(array(link(Person)));
- * }
+ * const Person = E.defineModel('Person', class {
+ *   name = E.field(E.string);
+ *   age = E.field(E.number);
+ *   password = E.field(E.string);
+ *   friends = E.field(E.array(E.link(() => Person)));
+ * }, { pk: 'name' });
  * 
  * // Exclude password, include friends' names; cache 30s
  * const PersonStream = createStreamType(Person, {
@@ -157,13 +153,13 @@ function getIdForData(namespace: string, ...data: any): number {
  * }, { cache: 30 });
  * 
  * export function streamPerson() {
- *   const person = Person.byName.get('Alice')!;
+ *   const person = Person.get('Alice')!;
  *   return new PersonStream(person);
  * }
  * ```
  */
 export function createStreamType<T, S extends FieldSelection<T>>(
-  Model: ModelClass & (new (...args: any[]) => T),
+  Model: E.AnyModelClass & (new (...args: any[]) => T),
   selection: S & ValidateSelection<T, S>,
   options?: { cache?: number }
 ) {
@@ -177,7 +173,7 @@ export function createStreamType<T, S extends FieldSelection<T>>(
         if (!Model.fields.hasOwnProperty(prop)) {
             throw new Error(`Property ${prop} does not exist in model ${Model.name}`);
         }
-        const LinkedModel = Model.fields[prop].type.getLinkedModel() as ModelClass | undefined;
+        const LinkedModel = Model.fields[prop].type.getLinkedModel() as E.AnyModelClass | undefined;
 
         if (selection[prop] === true) {
             if (LinkedModel) throw new Error(`Property ${prop} is a link; must specify sub-selection`);
@@ -203,7 +199,7 @@ function writeModelField(pack: DataPack, value: any, streamTypeId: number): void
         pack.write(value);
     } else if (value instanceof E.Model) {
         pack.writeCustom('model', value.getPrimaryKeyHash() + streamTypeId);
-    } else if (Array.isArray(value)) {
+    } else if (Array.isArray(value) || value instanceof Set) {
         pack.writeCollection('array', () => {
             for (const item of value) writeModelField(pack, item, streamTypeId);
         });
@@ -220,7 +216,7 @@ function writeModelField(pack: DataPack, value: any, streamTypeId: number): void
 /** Tracks link deltas for subscription management. */
 function updateLinkDeltas(value: any, linkDeltas: Map<E.Model<unknown>, Map<number,number>>, streamTypeId: number, delta: number): void {
     if (typeof value !== 'object' || value == null) return;
-    if (Array.isArray(value)) {
+    if (Array.isArray(value) || value instanceof Set) {
         for (const item of value) updateLinkDeltas(item, linkDeltas, streamTypeId, delta);
     } else if (value instanceof E.Model) {
         let map = linkDeltas.get(value);
@@ -238,7 +234,6 @@ function updateLinkDeltas(value: any, linkDeltas: Map<E.Model<unknown>, Map<numb
 E.setOnSaveCallback((commitId: number, items: Map<E.Model<any>, E.Change>) => {
     if (logLevel >= 3) console.log('[lowlander] onSave', commitId);
     for(const [model, changed] of items.entries()) {
-        
         const streamTypes = streamTypesPerModel.get(model.constructor);
         if (logLevel >= 3) console.log('[lowlander] Model changed:', model, changed, `streams=${streamTypes?.length}`);
         if (!streamTypes) continue;
@@ -283,7 +278,7 @@ export function sendModel(target: Uint8Array | number | number[], model: E.Model
                 if (typeof changed === 'object' && !changed.hasOwnProperty(fieldName)) continue;
                 let streamIndex = StreamType.fields[fieldName];
 
-                const fieldValue = (model as any)[fieldName];
+                let fieldValue = (model as any)[fieldName];
                 mustSend = true;
                 
                 if (typeof streamIndex === 'number') {
@@ -333,6 +328,10 @@ export function pushModel(target: number | Uint8Array | number[], model: E.Model
  * Wraps a server-side API object to create a stateful, type-safe proxy accessible from clients.
  * Use for authentication, sessions, or any stateful context that persists across RPC calls.
  * 
+ * If the API object has an `onDrop()` method, it is called when the proxy is dropped, either
+ * because the client cancelled the request (scope cleanup) or the WebSocket disconnected.
+ * Use this to clean up server-side state kept on behalf of the client.
+ * 
  * @typeParam API - The server-side API object type
  * @typeParam RETURN - The value type returned to the client
  * 
@@ -341,6 +340,7 @@ export function pushModel(target: number | Uint8Array | number[], model: E.Model
  * export class UserAPI {
  *   constructor(public user: User) {}
  *   getSecret() { return this.user.secret; }
+ *   onDrop() { console.log('client gone'); }
  * }
  * 
  * export async function authenticate(token: string) {
