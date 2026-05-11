@@ -23,6 +23,7 @@ interface FakeClientSocket {
     onerror?: ((error: any) => void) | null;
     readyState: number;
     binaryType: string;
+    messageQueue: Promise<void>;
     send(data: Uint8Array | ArrayBuffer): void;
     close(): void;
 }
@@ -373,11 +374,12 @@ export function createClientSocket(): WebSocket {
         onerror: null,
         readyState: 0, // CONNECTING
         binaryType: 'arraybuffer',
+        messageQueue: Promise.resolve(),
 
         send(data: Uint8Array | ArrayBuffer) {
             const buf = data instanceof Uint8Array ? data : new Uint8Array(data);
             // Queue message processing to ensure sequential handling
-            messageQueue = messageQueue.then(() => new Promise<void>(resolve => {
+            socket.messageQueue = messageQueue = messageQueue.then(() => new Promise<void>(resolve => {
                 setTimeout(async () => {
                     try {
                         await workerModule.handleBinaryMessage?.(buf, socketId);
@@ -393,7 +395,7 @@ export function createClientSocket(): WebSocket {
             if (socket.readyState >= 2) return;
             socket.readyState = 2; // CLOSING
             clientSockets.delete(socketId);
-            messageQueue = messageQueue.then(() => new Promise<void>(resolve => {
+            socket.messageQueue = messageQueue = messageQueue.then(() => new Promise<void>(resolve => {
                 setTimeout(async () => {
                     socket.readyState = 3; // CLOSED
                     await workerModule.handleClose?.(socketId);
@@ -408,6 +410,7 @@ export function createClientSocket(): WebSocket {
 
     // Open asynchronously
     setTimeout(() => {
+        if (socket.readyState !== 0) return;
         socket.readyState = 1; // OPEN
         workerModule.handleOpen?.(socketId, '127.0.0.1', {"user-agent": "FakeWarpSocket"});
         socket.onopen?.();
@@ -417,8 +420,13 @@ export function createClientSocket(): WebSocket {
 }
 
 /** Reset all state (for between tests). */
-export function reset() {
-    for (const client of clientSockets.values()) {
+export async function reset() {
+    const clients = [...clientSockets.values()];
+    for (const client of clients) {
+        if (client.readyState < 2) client.close();
+    }
+    await Promise.all(clients.map(client => client.messageQueue.catch(() => {})));
+    for (const client of clients) {
         client.readyState = 3;
     }
     clientSockets.clear();

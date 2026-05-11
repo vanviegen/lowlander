@@ -43,7 +43,7 @@
   },
   "peerDependencies": {
     "aberdeen": "^1.10.1",
-    "edinburgh": "^0.6.0"
+    "edinburgh": "^0.6.1"
   },
   "devDependencies": {
     "@types/bun": "^1.3.10",

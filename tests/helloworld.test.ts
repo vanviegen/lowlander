@@ -21,8 +21,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-    fakeWarpSocket.reset();
     A.unmountAll();
+    await fakeWarpSocket.reset();
     await resetAberdeen();
 });
 
