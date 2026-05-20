@@ -108,15 +108,24 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
                 // The actual socket send remains deferred until after commit.
 
                 if (response instanceof ServerProxy) {
-                    if (response.value instanceof StreamTypeBase) {
-                        throw new Error('ServerProxy values cannot be streamed models; return the stream directly or from a proxy method instead');
-                    }
                     let proxies = socketProxies.get(socketId);
                     if (!proxies) socketProxies.set(socketId, proxies = new Map());
                     if (logLevel >= 3) console.log('[lowlander] Setting proxy id', requestId, 'for socket', socketId);
                     proxies.set(requestId, response.api);
 
-                    pendingPacket = DataPack.createUint8Array(requestId, SERVER_MESSAGES.response_proxy, response.value, virtualSocketIds);
+                    if (response.value instanceof StreamTypeBase) {
+                        const StreamType = response.value.constructor as typeof StreamTypeBase<any>;
+                        const instance = response.value._instance;
+
+                        const virtualSocketId = warpsocket.createVirtualSocket(socketId, DataPack.createUint8Array(requestId, SERVER_MESSAGES.model_data));
+                        virtualSocketIds.push(virtualSocketId);
+                        pushModel(virtualSocketId, instance, 0, StreamType, 1);
+
+                        const cacheMs = StreamType.cache !== undefined ? StreamType.cache * 1000 : undefined;
+                        pendingPacket = DataPack.createUint8Array(requestId, SERVER_MESSAGES.response_proxy_model, virtualSocketIds, instance.getPrimaryKeyHash() + StreamType.id, cacheMs);
+                    } else {
+                        pendingPacket = DataPack.createUint8Array(requestId, SERVER_MESSAGES.response_proxy, response.value, virtualSocketIds);
+                    }
 
                 } else if (response instanceof StreamTypeBase) {
                     const StreamType = response.constructor as typeof StreamTypeBase<any>;

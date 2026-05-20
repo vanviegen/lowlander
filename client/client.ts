@@ -36,6 +36,7 @@ type ClientProxyArgs<Args extends any[]> = { [K in keyof Args]: ClientProxyArg<A
  * Transforms server-side return types for client-side use.
  * 
  * - Strips `Promise` wrappers
+ * - `ServerProxy<API, StreamTypeBase<T>>` → `PromiseProxy<T> & {serverProxy: ClientProxyObject<API>}`
  * - `ServerProxy<API, RETURN>` → `PromiseProxy<RETURN> & {serverProxy: ClientProxyObject<API>}`
  * - Other types → `PromiseProxy<R>`
  * 
@@ -44,7 +45,9 @@ type ClientProxyArgs<Args extends any[]> = { [K in keyof Args]: ClientProxyArg<A
 type ClientProxyReturn<R> = R extends Promise<infer U>
     ? ClientProxyReturn<U>
     : R extends ServerProxy<infer API, infer RETURN>
-        ? PromiseProxy<RETURN> & {promise: Promise<RETURN>, serverProxy: ClientProxyObject<API>}
+        ? RETURN extends StreamTypeBase<infer T>
+            ? PromiseProxy<T> & {promise: Promise<T>, serverProxy: ClientProxyObject<API>}
+            : PromiseProxy<RETURN> & {promise: Promise<RETURN>, serverProxy: ClientProxyObject<API>}
         : R extends StreamTypeBase<infer T>
             ? PromiseProxy<T> & {promise: Promise<T>}
             : PromiseProxy<R> & {promise: Promise<R>};
@@ -338,12 +341,13 @@ export class Connection<T> {
                 request.hasServerProxy = type === SERVER_MESSAGES.response_proxy;
                 if (logLevel >= 2) console.log(`[lowlander] incoming response requestId=${requestId} value=${result.value} virtualSocketIds=${request.virtualSocketIds} hasServerProxy=${request.hasServerProxy}`);
 
-            } else if (type === SERVER_MESSAGES.response_model) {
-                request.virtualSocketIds = pack.read() as number[]; // There must be at least one, for the model stream
+            } else if (type === SERVER_MESSAGES.response_model || type === SERVER_MESSAGES.response_proxy_model) {
+                request.virtualSocketIds = pack.read() as number[];
                 const dbKey = pack.readNumber();
                 const cacheMs = pack.read() as number | undefined;
                 const obj = request.database?.get(dbKey);
-                if (logLevel >= 2) console.log(`[lowlander] incoming response_model requestId=${requestId} dbKey=${dbKey} cacheMs=${cacheMs} obj=${obj}`);
+                request.hasServerProxy = type === SERVER_MESSAGES.response_proxy_model;
+                if (logLevel >= 2) console.log(`[lowlander] incoming ${request.hasServerProxy ? 'response_proxy_model' : 'response_model'} requestId=${requestId} dbKey=${dbKey} cacheMs=${cacheMs} obj=${obj}`);
                 if (obj) {
                     request.resultProxy.value = A.proxy(obj);
                 } else {

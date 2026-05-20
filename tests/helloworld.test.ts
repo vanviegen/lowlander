@@ -404,3 +404,32 @@ test('ClientProxyObject: typing matches README example', async () => {
         auth.serverProxy.nonExistent();
     }
 });
+
+test('ServerProxy with stream value: both .serverProxy and live .value', async () => {
+    const c = connect();
+    const auth = c.api.authenticateWithStream('Frank');
+    await passTime(1100);
+    expect(auth.value).toBeDefined();
+    expect(auth.value!.name).toBe('Frank');
+    expect(auth.value!.age).toBe(45);
+    // serverProxy still works
+    const bio = auth.serverProxy.getBio();
+    await passTime();
+    expect(bio.value).toContain('Frank is 45 years old');
+    // .value updates live when the model changes
+    await c.api.setOwnerAge(99).promise;
+    await passTime();
+    expect(auth.value!.age).toBe(99);
+    // restore
+    await c.api.setOwnerAge(45).promise;
+    await passTime();
+    if (false) {
+        // valid: name and age are in stream selection
+        auth.value?.name satisfies string | undefined;
+        auth.value?.age satisfies number | undefined;
+        // @ts-expect-error - 'password' not in stream selection
+        auth.value?.password;
+        // @ts-expect-error - nonExistent is not on UserAPI
+        auth.serverProxy.nonExistent();
+    }
+});

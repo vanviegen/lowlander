@@ -72,6 +72,16 @@ const Person = E.defineModel('Person', class {
 });
 type Person = InstanceType<typeof Person>;
 
+const PersonStream = createStreamType(Person, { name: true, age: true });
+
+export async function authenticateWithStream(auth: string) {
+    const user = Person.get(auth);
+    if (!user) throw new Error('User not found');
+    user.onlineCount++;
+    // Client receives a live stream of {name, age} as .value, plus UserAPI via .serverProxy
+    return new ServerProxy(new UserAPI(auth), new PersonStream(user));
+}
+
 const MyModel = E.defineModel('MyModel', class {
     id = E.field(E.identifier);
     name = E.field(E.string);

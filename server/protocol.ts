@@ -8,6 +8,7 @@ export const SERVER_MESSAGES = {
     response: 'r', // followed by result + virtualSocketIds
     response_proxy: 'p', // followed by result + virtualSocketIds (like above, but indicate that a ServerProxy has been created for this request)
     response_model: 'm', // followed by virtualSocketIds + dbKey + cacheMs (undefined = no caching/dedup)
+    response_proxy_model: 'q', // followed by virtualSocketIds + dbKey + cacheMs — like response_model but a ServerProxy was also registered
     model_data: 'd', // followed by dbKey + commitId + delta
 };
 
