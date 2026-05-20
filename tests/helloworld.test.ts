@@ -2,7 +2,7 @@ import { expect, test, beforeAll, afterEach, beforeEach } from "bun:test";
 import { passTime, assertBody, reset as resetAberdeen } from "aberdeen/test-helpers";
 import * as E from "edinburgh";
 import { start } from "lowlander/server";
-import { Connection } from "lowlander/client";
+import { Connection, type ClientProxyObject } from 'lowlander/client';
 import type * as API from "../examples/helloworld/server/api.js";
 import A from "aberdeen";
 import * as fakeWarpSocket from "./fake-warpsocket.js";
@@ -35,6 +35,14 @@ test('simple RPC: add', async () => {
     const sum = c.api.add(2, 3);
     await passTime();
     expect(sum.value).toBe(5);
+    if (false) {
+        // @ts-expect-error - string is not assignable to number
+        c.api.add('x', 2);
+        // valid: value is number | undefined
+        sum.value satisfies number | undefined;
+        // @ts-expect-error - value may be undefined, not a plain number
+        sum.value satisfies number;
+    }
 });
 
 test('authenticate returns ServerProxy', async () => {
@@ -59,6 +67,13 @@ test('ServerProxy: getBio', async () => {
     const bio = auth.serverProxy.getBio();
     await passTime(1100);
     expect(bio.value).toContain('Frank is 45 years old');
+    if (false) {
+        // valid: auth.value is string | undefined, bio.value is string | undefined
+        auth.value satisfies string | undefined;
+        bio.value satisfies string | undefined;
+        // @ts-expect-error - nonExistent is not a method on UserAPI
+        auth.serverProxy.nonExistent();
+    }
 });
 
 test('ServerProxy: toggleFriend', async () => {
@@ -77,6 +92,15 @@ test('model streaming: streamModel', async () => {
     expect(model.value!.name).toBe('Test');
     expect(model.value!.owner).toBeDefined();
     expect(model.value!.owner.name).toBe('Frank');
+    if (false) {
+        // valid: name and owner.name are in the projection
+        model.value?.name satisfies string | undefined;
+        model.value?.owner.name satisfies string | undefined;
+        // @ts-expect-error - 'id' was not included in the stream selection
+        model.value?.id;
+        // @ts-expect-error - 'password' was not included in the owner sub-selection
+        model.value?.owner.password;
+    }
 });
 
 test('two clients see same RPC result', async () => {
@@ -345,4 +369,38 @@ test('stream Record<string, LinkedModel> field with partial sub-selection', asyn
     expect(owners['Frank'].name).toBe('Frank');
     expect((owners['Frank'] as any).age).toBeUndefined();
     expect((owners['Frank'] as any).password).toBeUndefined();
+});
+
+test('ClientProxyObject: typing matches README example', async () => {
+    // Verify the ClientProxyObject<T> pattern from the README works end-to-end.
+    // All type checks are in `if (false)` so they are checked at compile time only.
+    const c = connect();
+    if (false) {
+        type APIClient = ClientProxyObject<typeof API>;
+        const api: APIClient = c.api;
+
+        // Simple RPC: ReturnType derivation as shown in README
+        type AddResult = ReturnType<APIClient['add']>;
+        const sum: AddResult = api.add(1, 2);
+        sum.value satisfies number | undefined;
+        // @ts-expect-error - value may be undefined, not a plain string
+        sum.value satisfies string;
+
+        // StreamModel: ReturnType picks up the projected data type
+        type ModelStreamType = ReturnType<APIClient['streamModel']>;
+        const modelStream: ModelStreamType = api.streamModel();
+        modelStream.value?.name satisfies string | undefined;
+        modelStream.value?.owner.age satisfies number | undefined;
+        // @ts-expect-error - 'id' was excluded from the stream selection
+        modelStream.value?.id;
+
+        // ServerProxy: .serverProxy is typed as ClientProxyObject<UserAPI>
+        type AuthResult = ReturnType<APIClient['authenticate']>;
+        const auth: AuthResult = api.authenticate('token');
+        auth.value satisfies string | undefined;
+        const bio = auth.serverProxy.getBio();
+        bio.value satisfies string | undefined;
+        // @ts-expect-error - nonExistent is not on UserAPI
+        auth.serverProxy.nonExistent();
+    }
 });

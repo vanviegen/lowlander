@@ -1,6 +1,6 @@
 {
   "name": "lowlander",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "TypeScript framework for data persistence, type-safe RPCs and real-time (partial) client synchronization.",
   "type": "module",
   "main": "./build/server/server.js",

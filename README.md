@@ -290,6 +290,25 @@ Reconnection is automatic with exponential backoff.
 
 Aberdeen's `clean()` handles RPC lifecycle. When a reactive scope is destroyed, active requests and subscriptions are cancelled automatically.
 
+
+#### Named Client-Side Types
+
+Use `ClientProxyObject<T>` to get the fully-typed client API shape, which is useful for deriving types from stream methods without duplicating field selections:
+
+```ts
+import type { ClientProxyObject } from 'lowlander/client';
+import type * as API from './server/api.js';
+
+type APIClient = ClientProxyObject<typeof API>;
+const api: APIClient = new Connection<typeof API>('ws://localhost:8080/').api;
+
+type SomethingType = ReturnType<APIClient['streamSomething']>;
+const something: SomethingType = api.streamSomething();
+```
+
+`ClientProxyObject` maps server return types to their client-side equivalents. Stream methods return `PromiseProxy<ProjectedData>`, plain values return `PromiseProxy<T>`, and `ServerProxy<API, R>` methods return a proxy with a `.serverProxy` of type `ClientProxyObject<SubAPI>`.
+
+
 ### Logging
 
 Set the `LOWLANDER_LOG_LEVEL` environment variable to a number from 0 to 3:
@@ -312,7 +331,7 @@ Creates a stream type for reactive model streaming to clients with automatic upd
 Specify which fields to include; when they change, updates are pushed to subscribed clients.
 Supports nested linked models and type-safe field selection.
 
-**Signature:** `<T, S extends FieldSelection<T>>(Model: object & ModelClassRuntime<any, readonly any[], any, any> & (new (initial?: Partial<any>, txn?: Transaction) => any) & (new (...args: any[]) => T), selection: S & ValidateSelection<...>, options?: { ...; }) => typeof StreamType`
+**Signature:** `<T, S extends FieldSelection<T>>(Model: object & ModelClassRuntime<any, readonly any[], any, any> & (new (initial?: Partial<any>, txn?: Transaction) => any) & (new (...args: any[]) => T), selection: S & ValidateSelection<...>, options?: { ...; }) => { ...; }`
 
 **Type Parameters:**
 

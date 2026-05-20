@@ -101,7 +101,7 @@ type Project<T, S> =
       : T extends Array<infer U>
         ? Array<Project<U, S>>
         : T extends ReadonlySet<infer U>
-          ? ReadonlySet<Project<U, S>>
+          ? Project<U, S>[]
           : string extends keyof T
               ? T extends Record<string, infer U>
                 ? Record<string, Project<U, S>>
@@ -182,7 +182,7 @@ export function createStreamType<T, S extends FieldSelection<T>>(
   Model: E.AnyModelClass & (new (...args: any[]) => T),
   selection: S & ValidateSelection<T, S>,
   options?: { cache?: number }
-) {
+): { new(instance: T): StreamTypeBase<Project<T, S>>; id: number; fields: Record<string, true|number>; cache?: number } {
     let streamTypes = streamTypesPerModel.get(Model);
     if (!streamTypes) streamTypesPerModel.set(Model, streamTypes = []);
 
@@ -210,7 +210,7 @@ export function createStreamType<T, S extends FieldSelection<T>>(
         static cache = options?.cache;
     }
     streamTypes.push(StreamType);
-    return StreamType;
+    return StreamType as any;
 }
 
 /** Writes `value` to `pack`, replacing Model instances with XOR'd hash refs. */
