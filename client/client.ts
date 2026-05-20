@@ -315,7 +315,12 @@ export class Connection<T> {
                 } else {
                     // Create new object
                     if (prevCommitIds && commitId < (prevCommitIds.get(DEFAULT_COMMIT) ?? -1)) return; // Stale create
-                    request.database.set(dbKeyHash, A.proxy(delta));
+                    const entry = A.proxy(delta);
+                    // OPAQUE=false: excluded from A.copy recursion (so this proxy is never
+                    // corrupted by being overwritten with data from a different linked model
+                    // at the same array index), but still wrapped in a proxy on read.
+                    (A.unproxy(entry) as any)[A.OPAQUE] = false;
+                    request.database.set(dbKeyHash, entry);
                     request.commitIds.set(dbKeyHash, new Map([[DEFAULT_COMMIT, commitId]]));
                 }
                 return;

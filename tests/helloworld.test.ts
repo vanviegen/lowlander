@@ -186,6 +186,23 @@ test('stream record field mutation', async () => {
     await passTime();
 });
 
+test('nested linked collection updates stay reactive', async () => {
+    const c = connect();
+    const model = c.api.streamModel();
+    const auth = c.api.authenticate('Frank');
+    await passTime(1100);
+
+    expect(model.value!.owner.friends.map(friend => friend.name).sort()).toEqual(['Alice', 'Bob']);
+
+    await auth.serverProxy.toggleFriend('Alice').promise;
+    await passTime();
+    expect(model.value!.owner.friends.map(friend => friend.name).sort()).toEqual(['Bob']);
+
+    await auth.serverProxy.toggleFriend('Alice').promise;
+    await passTime();
+    expect(model.value!.owner.friends.map(friend => friend.name).sort()).toEqual(['Alice', 'Bob']);
+});
+
 test('cached stream: linger and reuse', async () => {
     const c = connect();
     const show = A.proxy(true);
@@ -311,4 +328,21 @@ test('RPC with default parameter', async () => {
     await passTime();
     expect(r1.value).toBe('Hello, Alice!');
     expect(r2.value).toBe('Hi, Alice!');
+});
+
+test('stream Record<string, LinkedModel> field with partial sub-selection', async () => {
+    // Captures the case fixed by the FieldSelection/Project type changes:
+    // Record<string, LinkedModel> fields must accept a sub-selection for the value type.
+    // createStreamType(MyModel, { owners: { name: true } }) would be a TS error without the fix.
+    const c = connect();
+    const model = c.api.streamModelLinkedRecord();
+    await passTime();
+    expect(model.value).toBeDefined();
+    const owners = model.value!.owners;
+    // Both seeded persons appear as keys
+    expect(Object.keys(owners).sort()).toEqual(['Alice', 'Frank']);
+    // Only 'name' was selected — age/password must not be present
+    expect(owners['Frank'].name).toBe('Frank');
+    expect((owners['Frank'] as any).age).toBeUndefined();
+    expect((owners['Frank'] as any).password).toBeUndefined();
 });

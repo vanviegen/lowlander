@@ -305,14 +305,14 @@ Set `EDINBURGH_LOG_LEVEL` similarly for Edinburgh internals.
 
 The following is auto-generated from `server/server.ts`:
 
-### createStreamType · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L161)
+### createStreamType · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L181)
 
 Creates a stream type for reactive model streaming to clients with automatic updates.
 
 Specify which fields to include; when they change, updates are pushed to subscribed clients.
 Supports nested linked models and type-safe field selection.
 
-**Signature:** `<T, S extends FieldSelection<T>>(Model: (new () => any) & ModelClassRuntime<any, readonly any[], any, any> & (new (initial?: Partial<any>, txn?: Transaction) => any) & (new (...args: any[]) => T), selection: S & ValidateSelection<...>, options?: { ...; }) => typeof StreamType`
+**Signature:** `<T, S extends FieldSelection<T>>(Model: object & ModelClassRuntime<any, readonly any[], any, any> & (new (initial?: Partial<any>, txn?: Transaction) => any) & (new (...args: any[]) => T), selection: S & ValidateSelection<...>, options?: { ...; }) => typeof StreamType`
 
 **Type Parameters:**
 
@@ -350,7 +350,7 @@ export function streamPerson() {
 }
 ```
 
-### sendModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L262)
+### sendModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L282)
 
 Sends (updated) data for `model` to `target`.
 `target` is a virtual socket with a requestId+'d' user prefix, or a channel that subscribes such virtual sockets.
@@ -365,7 +365,7 @@ Sends (updated) data for `model` to `target`.
 - `StreamType: typeof StreamTypeBase<any>`
 - `changed?: E.Change`
 
-### pushModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L318)
+### pushModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L338)
 
 Subscribes `target` to this model, and sends initial data.
 `target` is a virtual socket with a requestId+'d' user prefix, or a channel that subscribes such virtual sockets.
@@ -380,7 +380,7 @@ Subscribes `target` to this model, and sends initial data.
 - `SubStreamType: typeof StreamTypeBase<any>`
 - `delta: number`
 
-### start · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L433)
+### start · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L453)
 
 Starts the Lowlander WebSocket server.
 
@@ -434,7 +434,7 @@ start(API_FILE, { bind: '0.0.0.0:8080' });
 
 **Signature:** `() => string`
 
-### ServerProxy · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L354)
+### ServerProxy · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L374)
 
 Wraps a server-side API object to create a stateful, type-safe proxy accessible from clients.
 Use for authentication, sessions, or any stateful context that persists across RPC calls.
@@ -470,11 +470,11 @@ export async function authenticate(token: string) {
 - `api`: - Server-side API object exposed to the client
 - `value`: - Value returned immediately to the client
 
-#### serverProxy.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L360)
+#### serverProxy.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L380)
 
 **Signature:** `() => string`
 
-### Socket · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L384)
+### Socket · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L404)
 
 Server-side socket for pushing data to a client. Server functions with `Socket<T>` parameters
 receive client callbacks on the client side.
@@ -497,7 +497,7 @@ export function streamNumbers(socket: Socket<number>) {
 api.streamNumbers(num => console.log(num));
 ```
 
-#### socket.send · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L393)
+#### socket.send · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L413)
 
 Sends data to the client.
 
@@ -509,7 +509,7 @@ Sends data to the client.
 
 **Returns:** `true` if sent, `false` if socket is closed
 
-#### socket.subscribe · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L399)
+#### socket.subscribe · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L419)
 
 **Signature:** `(channel: Uint8Array<ArrayBufferLike>, delta?: number) => void`
 
@@ -518,11 +518,11 @@ Sends data to the client.
 - `channel: Uint8Array`
 - `delta: any` (optional)
 
-#### socket.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L406)
+#### socket.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L426)
 
 **Signature:** `() => string`
 
-#### socket.[Symbol.for('nodejs.util.inspect.custom')] · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L410)
+#### socket.[Symbol.for('nodejs.util.inspect.custom')] · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L430)
 
 **Signature:** `() => string`
 
@@ -626,11 +626,11 @@ Returns the current connection status. Reactive in Aberdeen scopes.
 
 **Signature:** `() => void`
 
-#### connection.reconnect · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L383)
+#### connection.reconnect · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L388)
 
 **Signature:** `() => void`
 
-#### connection.pruneCommitIds · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L397)
+#### connection.pruneCommitIds · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L402)
 
 **Signature:** `(request: ActiveRequest, maxCommitId: number) => void`
 
@@ -639,7 +639,7 @@ Returns the current connection status. Reactive in Aberdeen scopes.
 - `request: ActiveRequest`
 - `maxCommitId: number`
 
-#### connection.cancelRequest · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L487)
+#### connection.cancelRequest · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L492)
 
 **Signature:** `(request: ActiveRequest) => void`
 
@@ -647,7 +647,7 @@ Returns the current connection status. Reactive in Aberdeen scopes.
 
 - `request: ActiveRequest`
 
-#### connection.startLinger · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L501)
+#### connection.startLinger · [method](https://github.com/vanviegen/lowlander/blob/main/client/client.ts#L506)
 
 **Signature:** `(cached: StreamCacheEntry) => void`
 

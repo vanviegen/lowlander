@@ -79,6 +79,7 @@ const MyModel = E.defineModel('MyModel', class {
     owner = E.field(E.link(Person));
     createdAt = E.field(E.dateTime);
     meta = E.field(E.record(E.number));
+    owners = E.field(E.record(E.link(() => Person)));
 }, {
     pk: 'id',
     unique: { name: 'name' },
@@ -100,8 +101,8 @@ export async function resetTestData(deleteEverything: boolean) {
         if (p1.getState() === "created") p1.friends = [p2, p3];
         // Reset onlineCount on startup (no clients connected yet)
         for (const p of [p1, p2, p3]) p.onlineCount = 0;
-        let m1 = MyModel.getBy('name', 'Test') || new MyModel({name: 'Test', owner: p1, meta: {score: 42, level: 7}});
-        let m2 = MyModel.getBy('name', 'Another') || new MyModel({name: 'Another', owner: p2, next: m1, meta: {}});
+        let m1 = MyModel.getBy('name', 'Test') || new MyModel({name: 'Test', owner: p1, meta: {score: 42, level: 7}, owners: {[p1.name]: p1, [p2.name]: p2}});
+        let m2 = MyModel.getBy('name', 'Another') || new MyModel({name: 'Another', owner: p2, next: m1, meta: {}, owners: {}});
         ids = {p1: p1.name, p2: p2.name, m1: m1.id, m2: m2.id};
     });
 }
@@ -136,6 +137,10 @@ const CachedStream = createStreamType(MyModel, {
     owner: { name: true },
 }, { cache: 60 });
 
+const LinkedRecordStream = createStreamType(MyModel, {
+    owners: { name: true },
+});
+
 // Example of model streaming - returns a reactive proxy that auto-updates on changes
 export function streamModel() {
     const m1 = MyModel.get(ids.m1)!;
@@ -145,6 +150,11 @@ export function streamModel() {
 export function streamModelCached() {
     const m1 = MyModel.get(ids.m1)!;
     return new CachedStream(m1);
+}
+
+export function streamModelLinkedRecord() {
+    const m1 = MyModel.get(ids.m1)!;
+    return new LinkedRecordStream(m1);
 }
 
 export async function incrOwnerAge(delta: number) {

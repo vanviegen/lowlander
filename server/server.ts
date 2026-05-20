@@ -46,6 +46,7 @@ export abstract class StreamTypeBase<T> {
 /**
  * Type-safe selector for specifying which model fields to stream to clients.
  * Use `true` to include a field, or an object to select nested fields in linked models.
+ * Set<U> and Record<string, U> fields take a selection for U (applied to every element).
  * 
  * @typeParam T - The model type
  */
@@ -54,9 +55,16 @@ type FieldSelection<T> =
     ? true | FieldSelection<U>
     : T extends Array<infer U>
       ? true | FieldSelection<U>
-      : T extends object
-        ? true | { [K in keyof T]?: FieldSelection<T[K]> }
-        : true;
+      : T extends ReadonlySet<infer U>
+        ? true | FieldSelection<U>
+        // string extends keyof T distinguishes Record<string,U> from finite-keyed model objects
+        : string extends keyof T
+            ? T extends Record<string, infer U>
+              ? true | FieldSelection<U>
+              : true
+            : T extends object
+              ? true | { [K in keyof T]?: FieldSelection<T[K]> }
+              : true;
 
 /**
  * Validates field selection compatibility at compile time.
@@ -67,13 +75,19 @@ type ValidateSelection<T, S> =
     ? S extends true ? true : ValidateSelection<U, S>
     : T extends Array<infer U>
       ? S extends true ? true : ValidateSelection<U, S>
-      : T extends object
-        ? S extends true
-          ? true
-          : S extends object
-            ? { [K in keyof S]-?: K extends keyof T ? ValidateSelection<T[K], S[K]> : never }
-            : never
-        : S extends true ? true : never;
+      : T extends ReadonlySet<infer U>
+        ? S extends true ? true : ValidateSelection<U, S>
+        : string extends keyof T
+            ? T extends Record<string, infer U>
+              ? S extends true ? true : ValidateSelection<U, S>
+              : never
+            : T extends object
+              ? S extends true
+                ? true
+                : S extends object
+                  ? { [K in keyof S]-?: K extends keyof T ? ValidateSelection<T[K], S[K]> : never }
+                  : never
+              : S extends true ? true : never;
 
 /**
  * Computes the resulting type after applying a field selection.
@@ -86,9 +100,15 @@ type Project<T, S> =
       ? ReadonlyArray<Project<U, S>>
       : T extends Array<infer U>
         ? Array<Project<U, S>>
-        : T extends object
-          ? { [K in Extract<keyof S, keyof T>]: Project<T[K], S[K & keyof T]> }
-          : T;
+        : T extends ReadonlySet<infer U>
+          ? ReadonlySet<Project<U, S>>
+          : string extends keyof T
+              ? T extends Record<string, infer U>
+                ? Record<string, Project<U, S>>
+                : T
+              : T extends object
+                ? { [K in Extract<keyof S, keyof T>]: Project<T[K], S[K & keyof T]> }
+                : T;
 
 
 /**
