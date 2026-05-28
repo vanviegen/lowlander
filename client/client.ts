@@ -520,7 +520,11 @@ export class Connection<T> {
 }
 
 const proxyHandlers: ProxyHandler<any> = {
-    get(target: ProxyTargetType, prop: string) {
+    get(target: ProxyTargetType, prop: string | symbol) {
+        if (typeof prop === 'symbol') {
+            // Expose OPAQUE=true so Aberdeen stores us as-is without re-proxying.
+            return prop === A.OPAQUE ? true : undefined;
+        }
         if (target.serverProxyCache?.has(prop)) {
             return target.serverProxyCache.get(prop);
         }
