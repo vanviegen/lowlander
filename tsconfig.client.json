@@ -7,10 +7,11 @@
     "rootDir": ".",
     "paths": {
       "lowlander/client": ["./client/client.ts"],
-      "lowlander/server": ["./server/server.ts"]
+      "lowlander/server": ["./server/server.ts"],
+      "lowlander/dashboard": ["./dashboard/index.ts"]
     }
   },
-  "include": ["client/**/*.ts", "examples/**/client/**/*.ts"],
+  "include": ["client/**/*.ts", "dashboard/client/**/*.ts", "examples/**/client/**/*.ts"],
   "exclude": ["node_modules", "build", "tests"],
   "references": [
     {"path": "./tsconfig.server.json"}

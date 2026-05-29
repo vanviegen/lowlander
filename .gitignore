@@ -8,8 +8,7 @@ build
 dist
 skill
 types
-.edinburgh
-.edinburgh_test
+.edinburgh*
 *.tsbuildinfo
 .gdb_history
 .local*

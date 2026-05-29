@@ -1,4 +1,4 @@
-import { expect, test, beforeAll, afterEach, beforeEach } from "bun:test";
+import { expect, test, beforeAll, afterEach, beforeEach } from "vitest";
 import { passTime, assertBody, reset as resetAberdeen } from "aberdeen/test-helpers";
 import * as E from "edinburgh";
 import { start } from "lowlander/server";
@@ -12,7 +12,7 @@ beforeAll(async () => {
     E.setMaxRetryCount(100);
     await start(
         new URL('../examples/helloworld/server/api.ts', import.meta.url).pathname,
-        { injectWarpSocket: fakeWarpSocket },
+        { injectWarpSocket: fakeWarpSocket as any },
     );
 });
 
@@ -336,11 +336,11 @@ test('onDrop: websocket close decrements onlineCount', async () => {
     expect(online).toEqual(['Frank']);
 
     // Close the first connection's underlying socket.
-    // Bun.sleep gives the real event loop time to complete the onDrop E.transact()
+    // passTime gives the event loop time to complete the onDrop E.transact()
     // commit — we can't await it because there's no handle on the close-triggered cleanup.
     (c as any).ws.close();
     await passTime(100);
-    await Bun.sleep(10);
+    await new Promise(r => setTimeout(r, 10));
     online = await c2.api.getOnlineUsers().promise;
     expect(online).toEqual([]);
 });

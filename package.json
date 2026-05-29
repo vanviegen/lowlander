@@ -21,21 +21,28 @@
       "bun": "./server/server.ts",
       "import": "./build/server/server.js",
       "types": "./build/server/server.d.ts"
+    },
+    "./dashboard": {
+      "bun": "./dashboard/index.ts",
+      "import": "./build/dashboard/index.js",
+      "types": "./build/dashboard/index.d.ts"
     }
   },
   "files": [
     "build/",
     "server/",
     "client/",
+    "dashboard/",
     "skill/"
   ],
   "scripts": {
-    "build": "tsc -b && cp -rf examples/helloworld/client/assets examples/helloworld/client/index.html build/examples/helloworld/client/ && npm run build:docs",
+    "build": "tsc -b && node --import=tsx/esm dashboard/build-bundle.ts && node --import=tsx/esm examples/helloworld/build-client.ts && npm run build:docs",
     "build:docs": "rm -rf skill ; mkdir skill ; cat skill-header.md README.md > skill/SKILL.md && readme-tsdoc --split --file skill/SKILL.md && readme-tsdoc --repo-url https://github.com/vanviegen/lowlander",
-    "typecheck": "bun x tsc -b",
+    "typecheck": "npx tsc -b",
     "clean": "rm -rf build dist skill",
-    "prepack": "bun install && bun run build",
-    "test": "bun test",
+    "prepack": "npm install && npm run build",
+    "test": "vitest run",
+    "example": "npm run build && (cd examples/helloworld && npm install) && node build/examples/helloworld/server/main.js",
     "postinstall": "[ -f .local-post-install.sh ] && sh .local-post-install.sh || true"
   },
   "dependencies": {
@@ -46,9 +53,13 @@
     "edinburgh": "^0.6.4"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.10",
+    "@types/node": "^20.19.41",
     "aberdeen": "^1.13.0",
-    "readme-tsdoc": "^1.1.6"
+    "esbuild": "^0.28.0",
+    "readme-tsdoc": "^1.1.6",
+    "sirv": "^3.0.2",
+    "tsx": "^4.0.0",
+    "vitest": "^4.1.7"
   },
   "workspaces": [
     "examples/*"

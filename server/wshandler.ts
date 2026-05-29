@@ -2,8 +2,12 @@ import DataPack from 'edinburgh/datapack';
 import { warpsocket, Socket, StreamTypeBase, pushModel, ServerProxy, logLevel } from './server.js';
 import { SERVER_MESSAGES, CLIENT_MESSAGES } from './protocol.js';
 import * as E from 'edinburgh';
+import type { HttpRequest, HttpResponse } from 'warpsocket';
 
 let mainApi: object | undefined;
+
+/** @internal Used by the dashboard module to introspect the user's API. */
+export function getMainApi(): object | undefined { return mainApi; }
 
 export const socketProxies = new Map<number, Map<number, any>>(); // {socketId: {proxyId: proxyObject}}
 
@@ -31,11 +35,29 @@ export async function handleStart(apiFile: any) {
     mainApi = await import(apiFile);
 }
 
+export async function handleHttpRequest(req: HttpRequest, res: HttpResponse): Promise<void> {
+    const handler = (mainApi as any)?.handleHttpRequest;
+    if (typeof handler === 'function') {
+        return handler(req, res);
+    }
+    res.statusCode = 404;
+    res.setHeader('content-type', 'text/plain');
+    res.end('Not found');
+}
+
 
 export async function handleBinaryMessage(message: Uint8Array, socketId: number) {
+    if (logLevel >= 2) console.log('[lowlander] handleBinaryMessage socket', socketId, 'bytes', message.length, 'hex', Array.from(message.slice(0, 16)).map(b => b.toString(16).padStart(2,'0')).join(' '));
     const pack = new DataPack(message);
-    const requestId = pack.readPositiveInt();
-    const type = pack.readNumber();
+    let requestId: number;
+    let type: number;
+    try {
+        requestId = pack.readPositiveInt();
+        type = pack.readNumber();
+    } catch (e: any) {
+        console.error('[lowlander] Failed to parse message header:', e.message, 'hex:', Array.from(message.slice(0, 16)).map(b => b.toString(16).padStart(2,'0')).join(' '));
+        return;
+    }
 
     if (type === CLIENT_MESSAGES.cancel) {
         // Delete server proxy object, if any
@@ -81,7 +103,9 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
         // Obtain function reference
         const methodName = pack.readString();
         let func = (api as any)[methodName];
-        if (typeof func !== 'function' || methodName.startsWith('_')) {
+        // `_dashboard` is the one underscore-prefixed name reserved for the
+        // dashboard module; everything else with a leading underscore is private.
+        if (typeof func !== 'function' || (methodName.startsWith('_') && methodName !== '_dashboard')) {
             return sendError(socketId, requestId, `Method not found: ${methodName}`);
         }
 
@@ -107,15 +131,21 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
                 // Result processing/serialization should be within the transaction, as it may involve (lazy) loading models.
                 // The actual socket send remains deferred until after commit.
 
-                if (response instanceof ServerProxy) {
+                // NOTE: Use duck-typing instead of instanceof for ServerProxy and StreamTypeBase,
+                // because api.js and wshandler.js each bundle their own copy of server.ts,
+                // so instanceof checks across those two bundles always return false.
+                // E.Model is safe to use because edinburgh is externalized (shared).
+                if (response !== null && typeof response === 'object' && 'api' in response && 'value' in response) {
+                    const serverProxyResponse = response as ServerProxy<any, any>;
                     let proxies = socketProxies.get(socketId);
                     if (!proxies) socketProxies.set(socketId, proxies = new Map());
                     if (logLevel >= 3) console.log('[lowlander] Setting proxy id', requestId, 'for socket', socketId);
-                    proxies.set(requestId, response.api);
+                    proxies.set(requestId, serverProxyResponse.api);
 
-                    if (response.value instanceof StreamTypeBase) {
-                        const StreamType = response.value.constructor as typeof StreamTypeBase<any>;
-                        const instance = response.value._instance;
+                    if (serverProxyResponse.value !== null && typeof serverProxyResponse.value === 'object' && (serverProxyResponse.value as any)._instance instanceof E.Model) {
+                        const streamValue = serverProxyResponse.value as unknown as StreamTypeBase<any>;
+                        const StreamType = streamValue.constructor as typeof StreamTypeBase<any>;
+                        const instance = streamValue._instance;
 
                         const virtualSocketId = warpsocket.createVirtualSocket(socketId, DataPack.createUint8Array(requestId, SERVER_MESSAGES.model_data));
                         virtualSocketIds.push(virtualSocketId);
@@ -124,12 +154,13 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
                         const cacheMs = StreamType.cache !== undefined ? StreamType.cache * 1000 : undefined;
                         pendingPacket = DataPack.createUint8Array(requestId, SERVER_MESSAGES.response_proxy_model, virtualSocketIds, instance.getPrimaryKeyHash() + StreamType.id, cacheMs);
                     } else {
-                        pendingPacket = DataPack.createUint8Array(requestId, SERVER_MESSAGES.response_proxy, response.value, virtualSocketIds);
+                        pendingPacket = DataPack.createUint8Array(requestId, SERVER_MESSAGES.response_proxy, serverProxyResponse.value, virtualSocketIds);
                     }
 
-                } else if (response instanceof StreamTypeBase) {
-                    const StreamType = response.constructor as typeof StreamTypeBase<any>;
-                    const instance = response._instance;
+                } else if (response !== null && typeof response === 'object' && (response as any)._instance instanceof E.Model) {
+                    const streamResponse = response as unknown as StreamTypeBase<any>;
+                    const StreamType = streamResponse.constructor as typeof StreamTypeBase<any>;
+                    const instance = streamResponse._instance;
 
                     // Create a virtual socket for the model updates, prefixed by requestId + 'd'
                     const virtualSocketId = warpsocket.createVirtualSocket(socketId, DataPack.createUint8Array(requestId, SERVER_MESSAGES.model_data));

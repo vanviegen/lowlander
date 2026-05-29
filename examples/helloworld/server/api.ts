@@ -1,6 +1,28 @@
 import * as E from "edinburgh";
 import { ServerProxy, createStreamType, Socket } from "lowlander/server";
 import * as warpsocket from "warpsocket";
+import type { HttpRequest, HttpResponse } from "warpsocket";
+import { serveDashboard } from "lowlander/dashboard";
+import { fileURLToPath } from "url";
+import { dirname, resolve } from "path";
+import sirv from "sirv";
+export { _dashboard } from "lowlander/dashboard";
+
+E.init(resolve(dirname(fileURLToPath(import.meta.url)), '../.edinburgh'));
+
+const CLIENT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../client');
+const serveStatic = sirv(CLIENT_DIR, { dev: false });
+
+export function handleHttpRequest(req: HttpRequest, res: HttpResponse) {
+    if (req.url === '/_dashboard' || req.url.startsWith('/_dashboard?')) {
+        return serveDashboard(res);
+    }
+    serveStatic(req as any, res as any, () => {
+        res.statusCode = 404;
+        res.setHeader('content-type', 'text/plain');
+        res.end('Not found');
+    });
+}
 
 export const getDebugState = warpsocket.getDebugState;
 
@@ -65,7 +87,7 @@ const Person = E.defineModel('Person', class {
     age = E.field(E.number);
     friends = E.field(E.array(E.link(() => Person)));
     password = E.field(E.string);
-    onlineCount = E.field(E.number);
+    onlineCount = E.field(E.number, { default: 0 });
 }, {
     pk: 'name',
     index: { online: (p: any) => p.onlineCount > 0 ? [true] : [] },
@@ -117,13 +139,6 @@ export async function resetTestData(deleteEverything: boolean) {
     });
 }
 resetTestData(false);
-``
-await E.transact(() => {
-    E.dump();
-    for(const p of Person.find()) {
-        console.log('Person:', p.name, 'age', p.age, 'friends', p.friends.map(f => f.name).join(','), 'password', p.password);
-    }
-});
 
 
 // Create a stream type that specifies which fields to send to clients

@@ -3,15 +3,16 @@
   "compilerOptions": {
     "composite": true,
     "lib": ["ES2020", "ESNext.WeakRef", "ESNext.Iterator"],
-    "types": ["bun"],
+    "types": ["node"],
     "declaration": true,
     "declarationMap": true,
     "outDir": "./build",
     "rootDir": ".",
     "paths": {
-      "lowlander/server": ["./server/server.ts"]
+      "lowlander/server": ["./server/server.ts"],
+      "lowlander/dashboard": ["./dashboard/index.ts"]
     }
   },
-  "include": ["server/**/*.ts", "examples/**/server/**/*.ts", "tests/fake-warpsocket.ts"],
+  "include": ["server/**/*.ts", "dashboard/server.ts", "dashboard/serve.ts", "dashboard/index.ts", "examples/**/server/**/*.ts", "tests/fake-warpsocket.ts"],
   "exclude": ["node_modules", "build", "tests"]
 }

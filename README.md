@@ -20,16 +20,24 @@ This library is built on top of a number of libraries by the same author:
 
 Lowlander glues these together and adds real-time partial data synchronization and type-safe RPCs to provide a framework for rapidly building performant full-stack (database included!) web applications.
 
+## Example project
+
+An example project is included in `examples/helloworld`. To run it:
+
+```bash
+npm run example
+```
+
+Opens at http://localhost:8080 with the Aberdeen dashboard at http://localhost:8080/_dashboard (password printed to console on start).
+
 ## Tutorial
 
 ### Project Setup
 
 ```bash
-bun init
-bun add lowlander aberdeen edinburgh
+npm init
+npm add lowlander aberdeen edinburgh
 ```
-
-(npm should also work for all of this.)
 
 Create the project structure:
 
@@ -334,11 +342,57 @@ Set the `LOWLANDER_LOG_LEVEL` environment variable to a number from 0 to 3:
 
 Set `EDINBURGH_LOG_LEVEL` similarly for Edinburgh internals.
 
+### Dashboard
+
+Lowlander ships with an optional admin/developer dashboard for inspecting
+Edinburgh models, browsing index rows, listing RPC methods, viewing source
+code, and peeking at warpsocket debug state (channels, sockets, workers,
+KV). It's a single self-contained HTML bundle.
+
+To enable it:
+
+1. Re-export `_dashboard` from your top-level API module:
+
+   ```ts
+   // server/api.ts
+   export { _dashboard } from "lowlander/dashboard";
+   ```
+
+2. Serve the bundled HTML by calling `serveDashboard(res)` from a
+   `warpsocket` `handleHttpRequest` export:
+
+   ```ts
+   import type { HttpRequest, HttpResponse } from "warpsocket";
+   import { serveDashboard } from "lowlander/dashboard";
+
+   export function handleHttpRequest(req: HttpRequest, res: HttpResponse) {
+       if (req.url === '/_dashboard' || req.url.startsWith('/_dashboard?')) {
+           return serveDashboard(res);
+       }
+       // … serve your own static files …
+   }
+   ```
+
+3. On first server start (per warpsocket KV namespace), a random password
+   is generated and printed to the console. Override with the
+   `LOWLANDER_DASHBOARD_PASSWORD` env var.
+
+The dashboard prompts for the websocket URL (defaults to the current host)
+and password on first load, then stores them in localStorage.
+
 ## Server API Reference
 
 The following is auto-generated from `server/server.ts`:
 
-### createStreamType · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L181)
+### getStreamTypesForModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L27)
+
+**Signature:** `(Model: AnyModelClass) => readonly (typeof StreamTypeBase<unknown>)[]`
+
+**Parameters:**
+
+- `Model: E.AnyModelClass`
+
+### createStreamType · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L186)
 
 Creates a stream type for reactive model streaming to clients with automatic updates.
 
@@ -383,7 +437,7 @@ export function streamPerson() {
 }
 ```
 
-### sendModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L282)
+### sendModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L287)
 
 Sends (updated) data for `model` to `target`.
 `target` is a virtual socket with a requestId+'d' user prefix, or a channel that subscribes such virtual sockets.
@@ -398,7 +452,7 @@ Sends (updated) data for `model` to `target`.
 - `StreamType: typeof StreamTypeBase<any>`
 - `changed?: E.Change`
 
-### pushModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L338)
+### pushModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L343)
 
 Subscribes `target` to this model, and sends initial data.
 `target` is a virtual socket with a requestId+'d' user prefix, or a channel that subscribes such virtual sockets.
@@ -413,7 +467,7 @@ Subscribes `target` to this model, and sends initial data.
 - `SubStreamType: typeof StreamTypeBase<any>`
 - `delta: number`
 
-### start · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L453)
+### start · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L458)
 
 Starts the Lowlander WebSocket server.
 
@@ -443,7 +497,7 @@ start(API_FILE, { bind: '0.0.0.0:8080' });
 
 **Type:** `typeof import("/var/home/frank/projects/warpsocket/dist/src/index", { with: { "resolution-mode": "import" } })`
 
-### StreamTypeBase · [abstract class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L31)
+### StreamTypeBase · [abstract class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L36)
 
 [object Object],[object Object],[object Object]
 
@@ -451,23 +505,23 @@ start(API_FILE, { bind: '0.0.0.0:8080' });
 
 - `T`
 
-#### StreamTypeBase.fields · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L33)
+#### StreamTypeBase.fields · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L38)
 
 **Type:** `{ [key: string]: number | true; }`
 
-#### StreamTypeBase.id · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L35)
+#### StreamTypeBase.id · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L40)
 
 **Type:** `number`
 
-#### StreamTypeBase.cache · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L37)
+#### StreamTypeBase.cache · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L42)
 
 **Type:** `number`
 
-#### streamTypeBase.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L40)
+#### streamTypeBase.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L45)
 
 **Signature:** `() => string`
 
-### ServerProxy · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L374)
+### ServerProxy · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L379)
 
 Wraps a server-side API object to create a stateful, type-safe proxy accessible from clients.
 Use for authentication, sessions, or any stateful context that persists across RPC calls.
@@ -503,11 +557,11 @@ export async function authenticate(token: string) {
 - `api`: - Server-side API object exposed to the client
 - `value`: - Value returned immediately to the client
 
-#### serverProxy.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L380)
+#### serverProxy.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L385)
 
 **Signature:** `() => string`
 
-### Socket · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L404)
+### Socket · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L409)
 
 Server-side socket for pushing data to a client. Server functions with `Socket<T>` parameters
 receive client callbacks on the client side.
@@ -530,7 +584,7 @@ export function streamNumbers(socket: Socket<number>) {
 api.streamNumbers(num => console.log(num));
 ```
 
-#### socket.send · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L413)
+#### socket.send · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L418)
 
 Sends data to the client.
 
@@ -542,7 +596,7 @@ Sends data to the client.
 
 **Returns:** `true` if sent, `false` if socket is closed
 
-#### socket.subscribe · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L419)
+#### socket.subscribe · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L424)
 
 **Signature:** `(channel: Uint8Array<ArrayBufferLike>, delta?: number) => void`
 
@@ -551,11 +605,11 @@ Sends data to the client.
 - `channel: Uint8Array`
 - `delta: any` (optional)
 
-#### socket.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L426)
+#### socket.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L431)
 
 **Signature:** `() => string`
 
-#### socket.[Symbol.for('nodejs.util.inspect.custom')] · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L430)
+#### socket.[Symbol.for('nodejs.util.inspect.custom')] · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L435)
 
 **Signature:** `() => string`
 

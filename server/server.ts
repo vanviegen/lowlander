@@ -22,6 +22,11 @@ const CHANNEL_TYPE_MODEL = 1;
 
 /** @internal Registry mapping model classes to their stream types */
 const streamTypesPerModel: Map<E.AnyModelClass, typeof StreamTypeBase<unknown>[]> = new Map();
+
+/** @internal Used by the dashboard module to inspect registered stream types. */
+export function getStreamTypesForModel(Model: E.AnyModelClass): readonly (typeof StreamTypeBase<unknown>)[] {
+    return streamTypesPerModel.get(Model) || [];
+}
  
 /**
  * Base class for stream types created by {@link createStreamType}.

@@ -1,6 +1,7 @@
 {
   "name": "helloworld",
   "private": true,
+  "type": "module",
   "dependencies": {
     "lowlander": "file:../../",
     "mdui": "^2.1.4"
