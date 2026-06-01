@@ -8,4 +8,6 @@ import * as lowlander from "lowlander/server";
 
 const apiFile = resolve(dirname(fileURLToPath(import.meta.url)), 'api.js');
 
-lowlander.start(apiFile, { bind: `0.0.0.0:${process.env.PORT || 8080}` });
+const port = process.env.PORT || 8080;
+lowlander.start(apiFile, { bind: `0.0.0.0:${port}` });
+console.log(`Lowlander server started at http://localhost:${port}`);

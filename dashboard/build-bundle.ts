@@ -28,10 +28,10 @@ if (result.errors.length) {
 const js = result.outputFiles[0].text;
 
 const template = readFileSync(resolve(here, 'client/index.html'), 'utf8');
-const html = template.replace(
-    '<!--LOWLANDER_DASHBOARD_SCRIPT-->',
-    `<script type="module">${js.replace(/<\/script>/gi, '<\\/script>')}</script>`,
-);
+const scriptTag = `<script type="module">${js.replace(/<\/script>/gi, '<\\/script>')}</script>`;
+// Use a function replacer so $& / $' / $` in the bundle are never treated as
+// special replacement patterns by String.replace.
+const html = template.replace('<!--LOWLANDER_DASHBOARD_SCRIPT-->', () => scriptTag);
 
 const outFile = resolve(outDir, 'dashboard.html');
 writeFileSync(outFile, html);

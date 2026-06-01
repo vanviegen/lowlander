@@ -214,7 +214,9 @@ export function createStreamType<T, S extends FieldSelection<T>>(
         static id = streamTypeId;
         static cache = options?.cache;
     }
-    streamTypes.push(StreamType);
+    if (!streamTypes.some(st => (st as any).id === streamTypeId)) {
+        streamTypes.push(StreamType);
+    }
     return StreamType as any;
 }
 

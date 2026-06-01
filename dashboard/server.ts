@@ -1,6 +1,7 @@
 import * as E from 'edinburgh';
-import DataPack from 'edinburgh/datapack';
 import { randomBytes, timingSafeEqual } from 'crypto';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import { ServerProxy, createStreamType, getStreamTypesForModel, warpsocket } from '../server/server.js';
 import { getMainApi } from '../server/wshandler.js';
 
@@ -12,33 +13,31 @@ const _modelsModule = await import(new URL('./models.js', import.meta.resolve('e
 };
 const modelRegistry = _modelsModule.modelRegistry;
 
-const PW_KV_KEY = new TextEncoder().encode('lowlander:dashboard:password');
+const PW_FILE = join(process.cwd(), '.lowlander_dashboard_password');
 
 function ensurePassword(): string {
-    // env var wins (allows the developer to pick a fixed one)
-    const envPw = process.env.LOWLANDER_DASHBOARD_PASSWORD;
-    if (envPw) return envPw;
-
-    const existing = warpsocket.getKey(PW_KV_KEY);
-    if (existing) return new TextDecoder().decode(existing);
-
-    const candidate = randomBytes(24).toString('base64url');
-    const candidateBytes = new TextEncoder().encode(candidate);
-    if (warpsocket.setKeyIf(PW_KV_KEY, candidateBytes, undefined)) {
-        console.log('\n========================================================');
-        console.log('  Lowlander dashboard password:  ' + candidate);
-        console.log('========================================================\n');
-        return candidate;
+    let password = process.env.LOWLANDER_DASHBOARD_PASSWORD;
+    if (password) {}
+    else if (existsSync(PW_FILE)) {
+        password = readFileSync(PW_FILE, 'utf8').trim();
+    } else {
+        const candidate = randomBytes(24).toString('base64url');
+        try {
+            writeFileSync(PW_FILE, candidate, { flag: 'wx' });
+        } catch {
+            // Another worker won the race
+        }
+        password = readFileSync(PW_FILE, 'utf8').trim();
     }
-    // Lost the race
-    return new TextDecoder().decode(warpsocket.getKey(PW_KV_KEY)!);
+    console.log('\n========================================================');
+    console.log('  Lowlander dashboard password:  ' + password);
+    console.log('========================================================\n');
+    return password;
 }
 
 let cachedPassword: string | undefined;
-function getPassword(): string {
-    // env var always wins, even after a random password was cached
-    const envPw = process.env.LOWLANDER_DASHBOARD_PASSWORD;
-    if (envPw) return envPw;
+export function getPassword(): string {
+    if (process.env.LOWLANDER_DASHBOARD_PASSWORD) return process.env.LOWLANDER_DASHBOARD_PASSWORD;
     return (cachedPassword ??= ensurePassword());
 }
 
@@ -99,7 +98,14 @@ function describeModel(Model: E.AnyModelClass) {
 
 function serializeValue(v: any, depth = 0): any {
     if (v === null || v === undefined) return v;
-    if (v instanceof E.Model) return `<${v.constructor.name} ${(v as any).getPrimaryKey?.() ? new DataPack((v as any).getPrimaryKey()).read() : '?'}>`;
+    if (v instanceof E.Model) {
+        const cls: any = v.constructor;
+        const tn = cls.tableName || cls.name;
+        const pkBytes = (v as any).getPrimaryKey?.();
+        const pkArr = pkBytes && cls._pkToArray ? cls._pkToArray(pkBytes) : null;
+        const pk = pkArr ? (pkArr.length === 1 ? pkArr[0] : pkArr) : null;
+        return { __ref: tn, pk };
+    }
     if (v instanceof Uint8Array) return Array.from(v.slice(0, 64)).map(b => b.toString(16).padStart(2, '0')).join('');
     if (v instanceof Date) return v.toISOString();
     if (v instanceof Set) return depth > 2 ? `Set(${v.size})` : Array.from(v).map(x => serializeValue(x, depth + 1));
@@ -181,38 +187,35 @@ class DashboardAPI {
     }
 
     findRecords(modelName: string, indexName: string, opts: {
-        from?: any;
-        to?: any;
+        search?: any;
         reverse?: boolean;
         limit?: number;
-        search?: string;
     } = {}) {
         const Model = modelByName(modelName);
         const idx = findIndex(Model, indexName);
         const fieldNames = Array.from(idx._indexFields.keys()) as string[];
 
         const findOpts: any = {};
-        if (opts.from !== undefined && opts.from !== '') findOpts.from = opts.from;
-        if (opts.to !== undefined && opts.to !== '') findOpts.to = opts.to;
+        if (opts.search !== undefined && opts.search !== '') {
+            findOpts.is = opts.search;
+        }
         if (opts.reverse) findOpts.reverse = true;
 
-        const limit = Math.min(opts.limit ?? 50, 500);
-        const search = opts.search?.toLowerCase();
+        const limit = Math.min(opts.limit ?? 10, 1000);
+        let iter: Iterable<any>;
+        try { iter = idx.find(findOpts); }
+        catch { return { rows: [], indexFields: fieldNames, scanned: 0 }; }
         const results: { pk: any; values: Record<string, any> }[] = [];
         let scanned = 0;
-        const SCAN_CAP = 5000;
-
-        const iter = idx.find(findOpts);
         for (const row of iter) {
             scanned++;
-            if (scanned > SCAN_CAP) break;
             const plain = instanceToPlain(row);
-            if (search) {
-                const hay = JSON.stringify(plain).toLowerCase();
-                if (!hay.includes(search)) continue;
-            }
+            const cls: any = (row as any).constructor;
+            const pkBytes = (row as any).getPrimaryKey ? (row as any).getPrimaryKey() : null;
+            const pkArr = pkBytes && cls._pkToArray ? cls._pkToArray(pkBytes) : null;
+            const pk = pkArr ? (pkArr.length === 1 ? pkArr[0] : pkArr) : null;
             results.push({
-                pk: serializeValue((row as any).getPrimaryKey ? new DataPack((row as any).getPrimaryKey()).read() : null),
+                pk: serializeValue(pk),
                 values: plain,
             });
             if (results.length >= limit) break;
@@ -221,7 +224,6 @@ class DashboardAPI {
             rows: results,
             indexFields: fieldNames,
             scanned,
-            truncatedScan: scanned > SCAN_CAP,
         };
     }
 
@@ -245,47 +247,6 @@ class DashboardAPI {
 
     getDebugState(mode: 'channels' | 'sockets' | 'workers' | 'kv') {
         return warpsocket.getDebugState(mode as any);
-    }
-
-    /**
-     * Active model streams: decode channel names back into model+streamType refs.
-     * Channels have format [CHANNEL_TYPE_MODEL=1, ...DataPack(pkHash + streamTypeId)].
-     */
-    getActiveModelStreams() {
-        const channels = warpsocket.getDebugState('channels');
-        const streamIdToInfo = new Map<number, { model: string; fields: any; cache?: number }>();
-        for (const Model of Object.values(modelRegistry)) {
-            for (const ST of getStreamTypesForModel(Model) as any[]) {
-                streamIdToInfo.set(ST.id, { model: Model.tableName, fields: ST.fields, cache: ST.cache });
-            }
-        }
-        const result: { streamTypeId: number; model?: string; fields?: any; pkHashOffset: number; subscribers: number }[] = [];
-        for (const ch of channels) {
-            if (!ch.channel || ch.channel.length < 1 || ch.channel[0] !== 1) continue;
-            try {
-                const pack = new DataPack(ch.channel.slice(1));
-                const combined = pack.readNumber() as number;
-                // Try to identify the streamTypeId by matching against known ids
-                let info: { model: string; fields: any; cache?: number } | undefined;
-                let streamTypeId = 0;
-                for (const [id, candidate] of streamIdToInfo) {
-                    // Heuristic: the lower bits encode streamTypeId; just record all and let UI filter.
-                    // We can't perfectly invert XOR without the pkHash, so just record the combined value.
-                    streamTypeId = id;
-                    info = candidate;
-                    void streamTypeId;
-                    void info;
-                }
-                result.push({
-                    streamTypeId: combined,
-                    pkHashOffset: combined,
-                    subscribers: Object.keys(ch.subscribers || {}).length,
-                });
-            } catch {
-                // skip
-            }
-        }
-        return result;
     }
 }
 

@@ -49,12 +49,12 @@
     "warpsocket": "^0.8.3"
   },
   "peerDependencies": {
-    "aberdeen": "^1.13.0",
+    "aberdeen": "^1.15.0",
     "edinburgh": "^0.6.4"
   },
   "devDependencies": {
     "@types/node": "^20.19.41",
-    "aberdeen": "^1.13.0",
+    "aberdeen": "^1.15.0",
     "esbuild": "^0.28.0",
     "readme-tsdoc": "^1.1.6",
     "sirv": "^3.0.2",

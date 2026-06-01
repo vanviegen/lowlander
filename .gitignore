@@ -12,3 +12,4 @@ types
 *.tsbuildinfo
 .gdb_history
 .local*
+.lowlander_dashboard_password

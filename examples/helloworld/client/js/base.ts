@@ -76,8 +76,3 @@ let dataIndex = 0;
 api.streamSomething(item => data[dataIndex++ % 20] = item);
 A('h2#Streamed data');
 A.dump(data);
-
-A('mdui-fab icon=admin_panel_settings text="Lowlander Admin" click=', async () => {
-    const { showAdminModal } = await import('./admin');
-    showAdminModal(api);
-});

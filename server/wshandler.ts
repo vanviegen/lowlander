@@ -105,7 +105,14 @@ export async function handleBinaryMessage(message: Uint8Array, socketId: number)
         let func = (api as any)[methodName];
         // `_dashboard` is the one underscore-prefixed name reserved for the
         // dashboard module; everything else with a leading underscore is private.
-        if (typeof func !== 'function' || (methodName.startsWith('_') && methodName !== '_dashboard')) {
+        // Also block: classes (typeof === 'function' but not callable as plain
+        // function), and Object.prototype methods accessible via prototype chain.
+        if (
+            typeof func !== 'function' ||
+            (methodName.startsWith('_') && methodName !== '_dashboard') ||
+            Function.prototype.toString.call(func).trimStart().startsWith('class ') ||
+            Object.prototype.hasOwnProperty.call(Object.prototype, methodName)
+        ) {
             return sendError(socketId, requestId, `Method not found: ${methodName}`);
         }
 

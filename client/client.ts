@@ -523,7 +523,8 @@ const proxyHandlers: ProxyHandler<any> = {
     get(target: ProxyTargetType, prop: string | symbol) {
         if (typeof prop === 'symbol') {
             // Expose OPAQUE=true so Aberdeen stores us as-is without re-proxying.
-            return prop === A.OPAQUE ? true : undefined;
+            // Also, don't dive into object args
+            return prop === A.OPAQUE ? true : prop === A.CUSTOM_DUMP ? `<ServerProxy for #${target.requestId}>` : undefined;
         }
         if (target.serverProxyCache?.has(prop)) {
             return target.serverProxyCache.get(prop);
