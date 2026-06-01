@@ -1,6 +1,9 @@
 import * as E from "edinburgh";
 import DataPack from "edinburgh/datapack";
 import * as realWarpsocket from 'warpsocket';
+import { randomBytes } from 'crypto';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
 
 // Get log level from environment variable
 // 0: no logging (default)
@@ -461,10 +464,16 @@ export async function start(mainApiFile: string, opts: {bind?: string, threads?:
     if (opts.injectWarpSocket) {
         warpsocket = opts.injectWarpSocket;
     }
+    const pwFile = join(process.cwd(), '.lowlander_dashboard_password');
+    if (!existsSync(pwFile)) try { writeFileSync(pwFile, randomBytes(24).toString('base64url'), { flag: 'wx' }); } catch {}
+    const password = process.env.LOWLANDER_DASHBOARD_PASSWORD ?? readFileSync(pwFile, 'utf8').trim();
+    if (!process.env.LOWLANDER_DASHBOARD_PASSWORD) {
+        console.log(`\n${'='.repeat(56)}\n  Lowlander dashboard password:  ${password}\n${'='.repeat(56)}\n`);
+    }
     await warpsocket.start({
         bind: opts.bind || '0.0.0.0:8080',
         threads: opts.threads,
         workerPath: WSHANDLER_FILE,
-        workerArg: mainApiFile,
+        workerArg: { apiFile: mainApiFile, password },
     });
 }

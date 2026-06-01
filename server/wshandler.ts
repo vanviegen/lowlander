@@ -30,7 +30,13 @@ function sendError(socketId: number, requestId: number, message: string) {
     send(socketId, requestId, SERVER_MESSAGES.error, message);
 }
 
-export async function handleStart(apiFile: any) {
+let dashboardPassword = '';
+/** @internal Used by the dashboard module to authenticate requests. */
+export function getPassword(): string { return dashboardPassword; }
+
+export async function handleStart(arg: any) {
+    const { apiFile, password } = arg;
+    dashboardPassword = password;
     if (logLevel >= 1) console.log('[lowlander] Worker started, loading', apiFile);
     mainApi = await import(apiFile);
 }

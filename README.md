@@ -384,7 +384,7 @@ and password on first load, then stores them in localStorage.
 
 The following is auto-generated from `server/server.ts`:
 
-### getStreamTypesForModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L27)
+### getStreamTypesForModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L30)
 
 **Signature:** `(Model: AnyModelClass) => readonly (typeof StreamTypeBase<unknown>)[]`
 
@@ -392,7 +392,7 @@ The following is auto-generated from `server/server.ts`:
 
 - `Model: E.AnyModelClass`
 
-### createStreamType · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L186)
+### createStreamType · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L189)
 
 Creates a stream type for reactive model streaming to clients with automatic updates.
 
@@ -437,7 +437,7 @@ export function streamPerson() {
 }
 ```
 
-### sendModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L289)
+### sendModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L292)
 
 Sends (updated) data for `model` to `target`.
 `target` is a virtual socket with a requestId+'d' user prefix, or a channel that subscribes such virtual sockets.
@@ -452,7 +452,7 @@ Sends (updated) data for `model` to `target`.
 - `StreamType: typeof StreamTypeBase<any>`
 - `changed?: E.Change`
 
-### pushModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L345)
+### pushModel · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L348)
 
 Subscribes `target` to this model, and sends initial data.
 `target` is a virtual socket with a requestId+'d' user prefix, or a channel that subscribes such virtual sockets.
@@ -467,7 +467,7 @@ Subscribes `target` to this model, and sends initial data.
 - `SubStreamType: typeof StreamTypeBase<any>`
 - `delta: number`
 
-### start · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L460)
+### start · [function](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L463)
 
 Starts the Lowlander WebSocket server.
 
@@ -489,15 +489,15 @@ const API_FILE = resolve(dirname(fileURLToPath(import.meta.url)), 'api.js');
 start(API_FILE, { bind: '0.0.0.0:8080' });
 ```
 
-### logLevel · [constant](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L10)
+### logLevel · [constant](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L13)
 
 **Value:** `number`
 
-### warpsocket · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L13)
+### warpsocket · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L16)
 
 **Type:** `typeof import("/var/home/frank/projects/warpsocket/dist/src/index", { with: { "resolution-mode": "import" } })`
 
-### StreamTypeBase · [abstract class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L36)
+### StreamTypeBase · [abstract class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L39)
 
 [object Object],[object Object],[object Object]
 
@@ -505,23 +505,23 @@ start(API_FILE, { bind: '0.0.0.0:8080' });
 
 - `T`
 
-#### StreamTypeBase.fields · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L38)
+#### StreamTypeBase.fields · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L41)
 
 **Type:** `{ [key: string]: number | true; }`
 
-#### StreamTypeBase.id · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L40)
+#### StreamTypeBase.id · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L43)
 
 **Type:** `number`
 
-#### StreamTypeBase.cache · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L42)
+#### StreamTypeBase.cache · [static property](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L45)
 
 **Type:** `number`
 
-#### streamTypeBase.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L45)
+#### streamTypeBase.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L48)
 
 **Signature:** `() => string`
 
-### ServerProxy · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L381)
+### ServerProxy · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L384)
 
 Wraps a server-side API object to create a stateful, type-safe proxy accessible from clients.
 Use for authentication, sessions, or any stateful context that persists across RPC calls.
@@ -557,11 +557,11 @@ export async function authenticate(token: string) {
 - `api`: - Server-side API object exposed to the client
 - `value`: - Value returned immediately to the client
 
-#### serverProxy.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L387)
+#### serverProxy.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L390)
 
 **Signature:** `() => string`
 
-### Socket · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L411)
+### Socket · [class](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L414)
 
 Server-side socket for pushing data to a client. Server functions with `Socket<T>` parameters
 receive client callbacks on the client side.
@@ -584,7 +584,7 @@ export function streamNumbers(socket: Socket<number>) {
 api.streamNumbers(num => console.log(num));
 ```
 
-#### socket.send · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L420)
+#### socket.send · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L423)
 
 Sends data to the client.
 
@@ -596,7 +596,7 @@ Sends data to the client.
 
 **Returns:** `true` if sent, `false` if socket is closed
 
-#### socket.subscribe · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L426)
+#### socket.subscribe · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L429)
 
 **Signature:** `(channel: Uint8Array<ArrayBufferLike>, delta?: number) => void`
 
@@ -605,11 +605,11 @@ Sends data to the client.
 - `channel: Uint8Array`
 - `delta: any` (optional)
 
-#### socket.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L433)
+#### socket.toString · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L436)
 
 **Signature:** `() => string`
 
-#### socket.[Symbol.for('nodejs.util.inspect.custom')] · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L437)
+#### socket.[Symbol.for('nodejs.util.inspect.custom')] · [method](https://github.com/vanviegen/lowlander/blob/main/server/server.ts#L440)
 
 **Signature:** `() => string`
 

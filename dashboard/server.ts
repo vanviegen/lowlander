@@ -1,9 +1,7 @@
 import * as E from 'edinburgh';
-import { randomBytes, timingSafeEqual } from 'crypto';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { timingSafeEqual } from 'crypto';
 import { ServerProxy, createStreamType, getStreamTypesForModel, warpsocket } from '../server/server.js';
-import { getMainApi } from '../server/wshandler.js';
+import { getMainApi, getPassword } from '../server/wshandler.js';
 
 // `modelRegistry` is a documented export of edinburgh's models module but is
 // not re-exported from the package entry. Reach it by URL relative to the
@@ -13,33 +11,6 @@ const _modelsModule = await import(new URL('./models.js', import.meta.resolve('e
 };
 const modelRegistry = _modelsModule.modelRegistry;
 
-const PW_FILE = join(process.cwd(), '.lowlander_dashboard_password');
-
-function ensurePassword(): string {
-    let password = process.env.LOWLANDER_DASHBOARD_PASSWORD;
-    if (password) {}
-    else if (existsSync(PW_FILE)) {
-        password = readFileSync(PW_FILE, 'utf8').trim();
-    } else {
-        const candidate = randomBytes(24).toString('base64url');
-        try {
-            writeFileSync(PW_FILE, candidate, { flag: 'wx' });
-        } catch {
-            // Another worker won the race
-        }
-        password = readFileSync(PW_FILE, 'utf8').trim();
-    }
-    console.log('\n========================================================');
-    console.log('  Lowlander dashboard password:  ' + password);
-    console.log('========================================================\n');
-    return password;
-}
-
-let cachedPassword: string | undefined;
-export function getPassword(): string {
-    if (process.env.LOWLANDER_DASHBOARD_PASSWORD) return process.env.LOWLANDER_DASHBOARD_PASSWORD;
-    return (cachedPassword ??= ensurePassword());
-}
 
 function passwordOk(provided: string): boolean {
     const expected = getPassword();
@@ -268,9 +239,6 @@ export function _dashboard(password: string) {
     }
     return new ServerProxy(new DashboardAPI(), DashboardProxyValue);
 }
-
-// Eagerly init the password on first import so it shows up at startup
-getPassword();
 
 // Re-export so callers don't need a separate import
 export type { DashboardAPI };
