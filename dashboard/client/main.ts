@@ -355,16 +355,16 @@ function streamFieldsInline(sel: any, fieldByName: Record<string, any>) {
     if (sel === true) { A('span', 'fg:$muted', '#(scalar)'); return; }
     if (!sel || typeof sel !== 'object') { A('span', 'text=', String(sel)); return; }
     for (const [k, v] of Object.entries(sel)) {
-        if (v === true) {
-            A('div #', k);
-        } else if (typeof v === 'number') {
+        if (typeof v === 'number') {
             const linked = fieldByName[k]?.type?.linkedModel;
-            A(`div #${k}→`, () => {
+            A(`div#${k}→`, () => {
                 if (linked) modelLink(linked, undefined, v.toString());
                 else A('#?');
             });
+        } else if (v === false) { // virtual/computed field
+            A(`div#${k}*`);
         } else {
-            A(`div #${k}={...}`);
+            A(`div#${k}`);
         }
     }
 }

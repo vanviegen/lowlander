@@ -433,3 +433,25 @@ test('ServerProxy with stream value: both .serverProxy and live .value', async (
         auth.serverProxy.nonExistent();
     }
 });
+
+test('stream virtual property (getter derived from real field)', async () => {
+    const c = connect();
+    const model = c.api.streamVirtual();
+    await passTime();
+    expect(model.value!.name).toBe('Test');
+    expect(model.value!.nameUpper).toBe('TEST');
+
+    await c.api.setModelName('Changed').promise;
+    await passTime();
+    expect(model.value!.name).toBe('Changed');
+    expect(model.value!.nameUpper).toBe('CHANGED');
+
+    // restore
+    await c.api.setModelName('Test').promise;
+    await passTime();
+    if (false) {
+        // valid: both selected fields are present
+        model.value?.name satisfies string | undefined;
+        model.value?.nameUpper satisfies string | undefined;
+    }
+});

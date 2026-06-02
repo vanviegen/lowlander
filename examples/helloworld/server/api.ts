@@ -112,6 +112,7 @@ const MyModel = E.defineModel('MyModel', class {
     createdAt = E.field(E.dateTime);
     meta = E.field(E.record(E.number));
     owners = E.field(E.record(E.link(() => Person)));
+    get nameUpper() { return this.name.toUpperCase(); }
 }, {
     pk: 'id',
     unique: { name: 'name' },
@@ -166,6 +167,12 @@ const LinkedRecordStream = createStreamType(MyModel, {
     owners: { name: true },
 });
 
+// Virtual getter stream: nameUpper is derived from name and updates live when name changes
+const VirtualStream = createStreamType(MyModel, {
+    name: true,
+    nameUpper: true,
+});
+
 // Example of model streaming - returns a reactive proxy that auto-updates on changes
 export function streamModel() {
     const m1 = MyModel.get(ids.m1)!;
@@ -180,6 +187,11 @@ export function streamModelCached() {
 export function streamModelLinkedRecord() {
     const m1 = MyModel.get(ids.m1)!;
     return new LinkedRecordStream(m1);
+}
+
+export function streamVirtual() {
+    const m1 = MyModel.get(ids.m1)!;
+    return new VirtualStream(m1);
 }
 
 export async function incrOwnerAge(delta: number) {

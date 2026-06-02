@@ -56,7 +56,7 @@
     "@types/node": "^20.19.41",
     "aberdeen": "^1.15.0",
     "esbuild": "^0.28.0",
-    "readme-tsdoc": "^1.1.6",
+    "readme-tsdoc": "^1.1.8",
     "sirv": "^3.0.2",
     "tsx": "^4.0.0",
     "vitest": "^4.1.7"

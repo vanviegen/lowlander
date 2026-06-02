@@ -37,8 +37,8 @@ export function getStreamTypesForModel(Model: E.AnyModelClass): readonly (typeof
  * @internal
  */
 export abstract class StreamTypeBase<T> {
-    /** @internal */
-    static fields: { [key: string]: true|number };
+    /** @internal `true`=plain field, number=sub-stream id, `false`=virtual getter */
+    static fields: { [key: string]: boolean|number };
     /** @internal */
     static id: number;
     /** @internal */
@@ -190,25 +190,33 @@ export function createStreamType<T, S extends FieldSelection<T>>(
   Model: E.AnyModelClass & (new (...args: any[]) => T),
   selection: S & ValidateSelection<T, S>,
   options?: { cache?: number }
-): { new(instance: T): StreamTypeBase<Project<T, S>>; id: number; fields: Record<string, true|number>; cache?: number } {
+): { new(instance: T): StreamTypeBase<Project<T, S>>; id: number; fields: Record<string, boolean|number>; cache?: number } {
     let streamTypes = streamTypesPerModel.get(Model);
     if (!streamTypes) streamTypesPerModel.set(Model, streamTypes = []);
 
     const streamTypeId = getIdForData("streamType", Model.tableName, selection);
 
-    const fields: Record<string, true|number> = {};
+    const fields: Record<string, boolean|number> = {};
     for(const prop of Array.from(Object.keys(selection)).sort() as (string & keyof S)[]) {
+        const sel = (selection as any)[prop];
+
         if (!Model.fields.hasOwnProperty(prop)) {
+            // Allow selecting a getter on the model prototype as a virtual field
+            const desc = Object.getOwnPropertyDescriptor((Model as any).prototype, prop);
+            if (desc?.get && sel === true) {
+                fields[prop] = false;
+                continue;
+            }
             throw new Error(`Property ${prop} does not exist in model ${Model.name}`);
         }
         const LinkedModel = Model.fields[prop].type.getLinkedModel() as E.AnyModelClass | undefined;
 
-        if (selection[prop] === true) {
+        if (sel === true) {
             if (LinkedModel) throw new Error(`Property ${prop} is a link; must specify sub-selection`);
             fields[prop] = true; // Include field without tracking links
         } else {
             if (!LinkedModel) throw new Error(`Property ${prop} is not a link; cannot specify sub-selection`);
-            const SubStreamType = createStreamType(LinkedModel as any, selection[prop] as any)
+            const SubStreamType = createStreamType(LinkedModel as any, sel as any)
             fields[prop] = SubStreamType.id;
         }
     }
@@ -261,6 +269,14 @@ function updateLinkDeltas(value: any, linkDeltas: Map<E.Model<unknown>, Map<numb
     }
 }
 
+/** Loose deep equality for getter result comparison (primitives via Object.is, objects via JSON). */
+function valuesEqual(a: any, b: any): boolean {
+    if (Object.is(a, b)) return true;
+    if (a == null || b == null) return false;
+    if (typeof a !== 'object' || typeof b !== 'object') return false;
+    try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
+}
+
 E.setOnSaveCallback((commitId: number, items: Map<E.Model<any>, E.Change>) => {
     if (logLevel >= 3) console.log('[lowlander] onSave', commitId);
     for(const [model, changed] of items.entries()) {
@@ -303,10 +319,24 @@ export function sendModel(target: Uint8Array | number | number[], model: E.Model
     else { // changed is an object or 'created'
         const linkDeltas = new Map<E.Model<unknown>, Map<number,number>>();
 
+        let oldClone: any;
+
         pack.writeCollection('object', (addRecord) => {
             for(const fieldName in StreamType.fields) {
+                const streamIndex = StreamType.fields[fieldName];
+
+                if (streamIndex === false) {
+                    const newVal = (model as any)[fieldName];
+                    if (typeof changed === 'object') {
+                        oldClone ??= Object.assign(Object.create(model), changed);
+                        if (valuesEqual(oldClone[fieldName], newVal)) continue;
+                    }
+                    addRecord(fieldName, newVal);
+                    mustSend = true;
+                    continue;
+                }
+
                 if (typeof changed === 'object' && !changed.hasOwnProperty(fieldName)) continue;
-                let streamIndex = StreamType.fields[fieldName];
 
                 let fieldValue = (model as any)[fieldName];
                 mustSend = true;
