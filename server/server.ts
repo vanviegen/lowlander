@@ -437,6 +437,7 @@ export class Socket<T> {
         return `{Socket id=${this.virtualSocketId}}`;
     }
 
+    /** @internal */
     [Symbol.for('nodejs.util.inspect.custom')]() {
         return this.toString();
     }

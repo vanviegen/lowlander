@@ -284,7 +284,7 @@ test('cached stream: dedup and refcount', async () => {
     await passTime();
     assertBody('span.a{"Test"}');
 
-    // Second scope reuses the cached stream — same resultProxy, renders instantly
+    // Second scope reuses the cached stream — same $result, renders instantly
     let model2: any;
     A(() => {
         if (show.value) {

@@ -33,9 +33,8 @@ const $state = A.proxy({
     authed: false,
     indexRefreshKey: 0,
     connecting: false,
+    connection: undefined as Connection<ServerExports> | undefined,
 });
-
-let connection: Connection<ServerExports> | undefined;
 let api: API | undefined;
 let authProxy: ReturnType<API['_dashboard']> | undefined;
 
@@ -116,7 +115,8 @@ function styles() {
 
 function login() {
     A(() => {
-        if ($state.connecting) {
+        const connError = $state.connection?.getError();
+        if ($state.connecting && !connError) {
             A('div', 'display:flex align-items:center justify-content:center h:100vh fg:$muted', '#Connecting…');
             return;
         }
@@ -133,7 +133,8 @@ function login() {
                     A('input type=password bind=', A.ref($state, 'password'), 'autofocus=');
                 });
                 A(() => {
-                    if ($state.loginError) A('div', 'fg:$danger', () => A('text=', $state.loginError));
+                    const err = $state.connection?.getError() || $state.loginError;
+                    if (err) A('div', 'fg:$danger', () => A('text=', err));
                 });
                 A('button type=submit', () => {
                     A(() => A($state.connected && !$state.authed ? 'text=Checking…' : 'text="Log in"'));
@@ -148,10 +149,10 @@ async function attemptLogin() {
     $state.loginError = '';
     saveSettings({ wsUrl: $state.wsUrl, password: $state.password });
     try {
-        if (connection) (connection as any).ws?.close?.();
+        if ($state.connection) ($state.connection as any).ws?.close?.();
     } catch {}
-    connection = new Connection<ServerExports>($state.wsUrl);
-    api = connection.api;
+    $state.connection = new Connection<ServerExports>($state.wsUrl);
+    api = $state.connection.api;
     $state.connected = false;
     $state.authed = false;
     const proxy = api._dashboard($state.password);
@@ -166,7 +167,7 @@ async function attemptLogin() {
         $state.loginError = err?.message || 'Login failed';
         $state.connected = false;
         $state.authed = false;
-        connection = undefined;
+        $state.connection = undefined;
         api = undefined;
         authProxy = undefined;
     }
@@ -177,8 +178,8 @@ function logout() {
     $state.connected = false;
     $state.password = '';
     saveSettings({ wsUrl: $state.wsUrl, password: '' });
-    try { (connection as any)?.ws?.close?.(); } catch {}
-    connection = undefined;
+    try { ($state.connection as any)?.ws?.close?.(); } catch {}
+    $state.connection = undefined;
     api = undefined;
     authProxy = undefined;
 }
@@ -355,7 +356,7 @@ function streamFieldsInline(sel: any, fieldByName: Record<string, any>) {
     if (!sel || typeof sel !== 'object') { A('span', 'text=', String(sel)); return; }
     for (const [k, v] of Object.entries(sel)) {
         if (v === true) {
-            A('div', 'text=', k);
+            A('div #', k);
         } else if (typeof v === 'number') {
             const linked = fieldByName[k]?.type?.linkedModel;
             A(`div #${k}→`, () => {

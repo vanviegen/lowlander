@@ -200,8 +200,11 @@ export class Connection<T> {
     private reconnectAttempts = 0;
     /** @internal */
     public _proxyCounter = 0;
-    private onlineProxy = A.proxy(false);
+    private $state = A.proxy({online: false, error: undefined as undefined|string});
     private streamCache = new Map<string, StreamCacheEntry>();
+
+    /** @internal - allows storing Connection instances in Aberdeen proxies without re-proxying */
+    get [A.OPAQUE]() { return true as const; }
 
     /**
      * Type-safe proxy to the server-side API. Methods return `PromiseProxy` objects
@@ -221,22 +224,36 @@ export class Connection<T> {
     /**
      * Returns the current connection status. Reactive in Aberdeen scopes.
      */
-    isOnline(): boolean { return this.onlineProxy.value; }
+    isOnline(): boolean { return this.$state.online; }
+
+    /**
+     * Returns the last WebSocket error message, or `undefined` if there is none.
+     * Clears automatically when the connection comes online. Reactive in Aberdeen scopes.
+     */
+    getError(): string | undefined { return this.$state.error; }
 
     private connect() {
-        const ws: WebSocket = this.ws = typeof this.url === 'string'
-            ? new WebSocket(this.url)
-            : this.url();
+        let ws: WebSocket;
+        try {
+            ws = this.ws = typeof this.url === 'string'
+                ? new WebSocket(this.url)
+                : this.url();
+        } catch (error: any) {
+            console.error('WebSocket connection error:', error);
+            this.$state.error = error?.message || 'WebSocket connection error';
+            return;
+        }
         ws.binaryType = "arraybuffer";
         if (logLevel >= 1) console.log(`[lowlander] Connecting to WebSocket at ${typeof this.url === 'string' ? this.url : '[custom WebSocket]'}`);
  
         ws.onopen = () => {
             if (ws !== this.ws) return; // No longer the current connection
             if (logLevel >= 1) console.log('[lowlander] WebSocket connected');
-            this.onlineProxy.value = true;
+            this.$state.online = true;
+            this.$state.error = undefined;
             this.reconnectAttempts = 0;
             for(const request of this.activeRequests.values()) {
-                request.resultProxy.busy = true;
+                request.$result.busy = true;
                 this.ws!.send(request.requestBuffer as Uint8Array<ArrayBuffer>);
             }
         };
@@ -250,6 +267,7 @@ export class Connection<T> {
         ws.onerror = (error: any) => {
             if (ws !== this.ws) return; // No longer the current connection
             console.error('WebSocket error:', error);
+            this.$state.error = error?.message || 'WebSocket connection error';
             this.reconnect();
         };
         
@@ -261,7 +279,7 @@ export class Connection<T> {
 
             const request = this.activeRequests.get(requestId);
             if (!request) return; // Raced
-            const result = A.unproxy(request.resultProxy);
+            const result = A.unproxy(request.$result);
 
             const type = pack.read();
             if (typeof type === 'number') {
@@ -318,12 +336,12 @@ export class Connection<T> {
                 } else {
                     // Create new object
                     if (prevCommitIds && commitId < (prevCommitIds.get(DEFAULT_COMMIT) ?? -1)) return; // Stale create
-                    const entry = A.proxy(delta);
+                    const $entry = A.proxy(delta);
                     // OPAQUE=false: excluded from A.copy recursion (so this proxy is never
                     // corrupted by being overwritten with data from a different linked model
                     // at the same array index), but still wrapped in a proxy on read.
-                    (A.unproxy(entry) as any)[A.OPAQUE] = false;
-                    request.database.set(dbKeyHash, entry);
+                    (A.unproxy($entry) as any)[A.OPAQUE] = false;
+                    request.database.set(dbKeyHash, $entry);
                     request.commitIds.set(dbKeyHash, new Map([[DEFAULT_COMMIT, commitId]]));
                 }
                 return;
@@ -332,11 +350,11 @@ export class Connection<T> {
             // Each request should get one of these packet types as a response
             if (type === SERVER_MESSAGES.error) {
                 const errorMessage = pack.readString();
-                request.resultProxy.error = new Error(errorMessage);
+                request.$result.error = new Error(errorMessage);
                 if (logLevel >= 2) console.log(`[lowlander] incoming error requestId=${requestId} message=${errorMessage}`);
 
             } else if (type === SERVER_MESSAGES.response || type === SERVER_MESSAGES.response_proxy) {
-                request.resultProxy.value = pack.read();
+                request.$result.value = pack.read();
                 request.virtualSocketIds = pack.read() as number[] | undefined;
                 request.hasServerProxy = type === SERVER_MESSAGES.response_proxy;
                 if (logLevel >= 2) console.log(`[lowlander] incoming response requestId=${requestId} value=${result.value} virtualSocketIds=${request.virtualSocketIds} hasServerProxy=${request.hasServerProxy}`);
@@ -349,9 +367,9 @@ export class Connection<T> {
                 request.hasServerProxy = type === SERVER_MESSAGES.response_proxy_model;
                 if (logLevel >= 2) console.log(`[lowlander] incoming ${request.hasServerProxy ? 'response_proxy_model' : 'response_model'} requestId=${requestId} dbKey=${dbKey} cacheMs=${cacheMs} obj=${obj}`);
                 if (obj) {
-                    request.resultProxy.value = A.proxy(obj);
+                    request.$result.value = A.proxy(obj);
                 } else {
-                    request.resultProxy.error = new Error('Unknown database key ' + dbKey);
+                    request.$result.error = new Error('Unknown database key ' + dbKey);
                 }
                 if (cacheMs !== undefined && request.cacheKey && !this.streamCache.has(request.cacheKey)) {
                     this.streamCache.set(request.cacheKey, {
@@ -370,10 +388,10 @@ export class Connection<T> {
             }
 
             if (!request.hasServerProxy) {
-                delete (request.resultProxy as any).serverProxy;
+                delete (request.$result as any).serverProxy;
             }
 
-            request.resultProxy.busy = false;
+            request.$result.busy = false;
 
             if (request.resolve) {
                 // This does not happen on reconnect
@@ -392,7 +410,7 @@ export class Connection<T> {
     private reconnect() {
         this.ws = undefined;
 
-        this.onlineProxy.value = false;
+        this.$state.online = false;
 
         if (typeof this.url !== 'string') return; // No reconnect in test mode
 
@@ -438,12 +456,12 @@ export class Connection<T> {
                         if (cached.refCount <= 0) this.startLinger(cached);
                     });
 
-                    return cached.request.resultProxy;
+                    return cached.request.$result;
                 }
             }
 
             const result = {busy: true} as PromiseProxy<any> & {promise: Promise<any>} & {serverProxy: any};
-            const resultProxy = A.proxy(result);
+            const $result = A.proxy(result);
 
             const requestId = ++this.requestCounter;
 
@@ -463,7 +481,7 @@ export class Connection<T> {
                 }
             });
 
-            const request: ActiveRequest = { resultProxy, requestBuffer: pack.toUint8Array(true), requestId, connection: this, callbacks, cacheKey };
+            const request: ActiveRequest = { $result, requestBuffer: pack.toUint8Array(true), requestId, connection: this, callbacks, cacheKey };
             result.serverProxy = new Proxy(request, proxyHandlers);
             result.promise = new Promise((resolve, reject) => {
                 request.resolve = resolve;
@@ -489,7 +507,7 @@ export class Connection<T> {
                 this.cancelRequest(request);
             });
 
-            return resultProxy;
+            return $result;
         }
     }
 
@@ -553,7 +571,7 @@ interface ProxyTargetType {
 }
 
 interface ActiveRequest extends ProxyTargetType {
-    resultProxy: PromiseProxy<any>;
+    $result: PromiseProxy<any>;
     callbacks?: ((...args: any[]) => void)[];
     virtualSocketIds?: number[];
     database?: Map<number, Record<any,any>>; // For model streams
