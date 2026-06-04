@@ -2,6 +2,7 @@ import A from 'aberdeen';
 import { current as route, go } from 'aberdeen/route';
 import { Connection, type ClientProxyObject } from 'lowlander/client';
 import type { _dashboard } from './shim-server.js';
+import { initSkyeTheme, openCreateModal, openEditModal, openDeleteConfirm } from './crud.js';
 
 type ServerExports = { _dashboard: typeof _dashboard };
 type API = ClientProxyObject<ServerExports>;
@@ -68,6 +69,7 @@ function effectivePk(): string { return url.pk === '-' ? '' : url.pk; }
 let tableClass = '';
 
 function styles() {
+    initSkyeTheme(); // Wire Skye CSS vars to the dashboard's dark palette
     A.setSpacingCssVars();
 
     A.cssVars.bg = '#0f1117';
@@ -276,7 +278,14 @@ function modelDetail() {
             const idx = m.indexes.find((i: any) => i.name === cur);
             if (!idx) return;
             A('section', 'mb:$4', () => {
-                A('h3', 'm:0 mb:$2 fg:$muted font-weight:600', 'text=', `Data for ${cur}`);
+                A('div', 'display:flex justify-content:space-between align-items:center mb:$2', () => {
+                    A('h3', 'm:0 fg:$muted font-weight:600', 'text=', `Data for ${cur}`);
+                    A('button.ghost', 'p: 2px 10px; font-size:11px', 'click=', () => {
+                        openCreateModal(authProxy!, m.tableName, m.fields, () => {
+                            $state.indexRefreshKey++;
+                        });
+                    }, '#+ New');
+                });
                 indexBrowser(m, idx);
             });
         });
@@ -424,16 +433,40 @@ function indexBrowser(m: any, idx: any) {
                 A('div', 'overflow:auto', () => {
                     A('table', tableClass, () => {
                         const cols = Object.keys(r.rows[0].values);
-                        A('thead tr', () => { for (const c of cols) A('th', 'text=', c); });
+                        A('thead tr', () => {
+                            for (const c of cols) A('th', 'text=', c);
+                            A('th', 'w:1px'); // actions column
+                        });
                         A('tbody', () => {
                             for (const row of r.rows) {
                                 const pkStr = jsonStringify(row.pk);
                                 A('tr.selectable', 'click=', () => { url.pk = (effectivePk() === pkStr) ? '-' : pkStr; }, () => {
-                                        A(() => A('.selected=', effectivePk() === pkStr));
-                                        for (const c of cols) {
-                                            A('td', () => A.dump(wrapForDump((row.values as any)[c])));
-                                        }
+                                    A(() => A('.selected=', effectivePk() === pkStr));
+                                    for (const c of cols) {
+                                        A('td', () => A.dump(wrapForDump((row.values as any)[c])));
+                                    }
+                                    A('td', 'text-align:right white-space:nowrap p: 2px 4px;', () => {
+                                        A('button.ghost', 'p: 1px 6px; font-size:11px mr:$1', 'title=Edit', () => {
+                                            A('click=', (e: Event) => {
+                                                e.stopPropagation();
+                                                openEditModal(authProxy!, modelName, m.fields, row.pk, row.values, () => {
+                                                    $state.indexRefreshKey++;
+                                                });
+                                            });
+                                            A('#✎');
+                                        });
+                                        A('button.ghost', 'p: 1px 6px; font-size:11px fg:$danger', 'title=Delete', () => {
+                                            A('click=', (e: Event) => {
+                                                e.stopPropagation();
+                                                openDeleteConfirm(authProxy!, modelName, row.pk, pkStr, () => {
+                                                    $state.indexRefreshKey++;
+                                                    if (effectivePk() === pkStr) url.pk = '-';
+                                                });
+                                            });
+                                            A('#✕');
+                                        });
                                     });
+                                });
                             }
                         });
                     });

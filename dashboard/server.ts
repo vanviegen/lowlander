@@ -18,13 +18,111 @@ function passwordOk(provided: string): boolean {
     return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
 }
 
-function describeType(type: E.TypeWrapper<unknown>): { kind: string; display: string; linkedModel?: string } {
+/** Recursive type descriptor sent to the dashboard client for building CRUD editors. */
+export interface TypeInfo {
+    kind: string;
+    display: string;
+    /** For 'link' kind: the linked model's tableName. */
+    linkedModel?: string;
+    /** For 'array', 'set', and opt('or' with undef) kinds: the element/inner type. */
+    inner?: TypeInfo;
+    /** For 'record' kind: the value type. */
+    innerValue?: TypeInfo;
+    /** For 'or' kind: all union choices (includes the undef literal for opt). */
+    choices?: TypeInfo[];
+    /** True when this is opt(T) — an or(undef, T) with exactly one non-undefined branch. */
+    isOptional?: boolean;
+    /** For 'literal' kind: the JSON-serialized literal value. */
+    literalValue?: string;
+}
+
+function describeType(type: E.TypeWrapper<unknown>): TypeInfo {
+    const kind = (type as any).kind as string;
     const linked = type.getLinkedModel();
-    return {
-        kind: (type as any).kind,
+
+    const info: TypeInfo = {
+        kind,
         display: type.toString(),
         linkedModel: linked?.tableName,
     };
+
+    if (kind === 'array' || kind === 'set') {
+        info.inner = describeType((type as any).inner);
+    } else if (kind === 'record') {
+        info.innerValue = describeType((type as any).inner);
+    } else if (kind === 'or') {
+        const choices = (type as any).choices as E.TypeWrapper<unknown>[];
+        info.choices = choices.map(describeType);
+        const isUndefLiteral = (t: TypeInfo) => t.kind === 'literal' && t.literalValue === 'undefined';
+        const nonUndef = info.choices.filter(c => !isUndefLiteral(c));
+        const hasUndef = info.choices.some(c => isUndefLiteral(c));
+        if (hasUndef && nonUndef.length === 1) {
+            info.isOptional = true;
+            info.inner = nonUndef[0];
+        }
+    } else if (kind === 'literal') {
+        const val = (type as any).value;
+        info.literalValue = val === undefined ? 'undefined' : JSON.stringify(val);
+    }
+
+    return info;
+}
+
+function parseValueFromJson(type: E.TypeWrapper<unknown>, json: any): any {
+    if (json === null || json === undefined) return undefined;
+    const kind = (type as any).kind as string;
+    switch (kind) {
+        case 'string':
+        case 'id':
+            return typeof json === 'string' ? json : String(json);
+        case 'number':
+            return typeof json === 'number' ? json : Number(json);
+        case 'boolean':
+            return json === true || json === 'true' || json === 1;
+        case 'dateTime':
+            return new Date(json);
+        case 'link': {
+            const Model = type.getLinkedModel()!;
+            const pk = json?.__ref ? json.pk : json;
+            const pkArgs = Array.isArray(pk) ? pk : [pk];
+            const instance = (Model as any).get(...pkArgs);
+            if (!instance) throw new Error(`Linked ${Model.tableName} record not found: ${JSON.stringify(pk)}`);
+            return instance;
+        }
+        case 'array': {
+            const inner = (type as any).inner as E.TypeWrapper<unknown>;
+            if (!Array.isArray(json)) return [];
+            return json.map((v: any) => parseValueFromJson(inner, v));
+        }
+        case 'set': {
+            const inner = (type as any).inner as E.TypeWrapper<unknown>;
+            if (!Array.isArray(json)) return new Set();
+            return new Set(json.map((v: any) => parseValueFromJson(inner, v)));
+        }
+        case 'record': {
+            const inner = (type as any).inner as E.TypeWrapper<unknown>;
+            if (!json || typeof json !== 'object' || Array.isArray(json)) return {};
+            const result: Record<string, any> = {};
+            for (const [k, v] of Object.entries(json)) result[k] = parseValueFromJson(inner, v);
+            return result;
+        }
+        case 'or': {
+            const choices = (type as any).choices as E.TypeWrapper<unknown>[];
+            const isUndefLiteral = (t: E.TypeWrapper<unknown>) =>
+                (t as any).kind === 'literal' && (t as any).value === undefined;
+            if (json === null || json === undefined) {
+                if (choices.some(isUndefLiteral)) return undefined;
+                return null;
+            }
+            const nonUndef = choices.filter(c => !isUndefLiteral(c));
+            if (nonUndef.length === 1) return parseValueFromJson(nonUndef[0]!, json);
+            return json;
+        }
+        case 'literal':
+            return (type as any).value;
+        default:
+            return json;
+    }
 }
 
 function describeIndex(index: any) {
@@ -38,18 +136,21 @@ function describeIndex(index: any) {
 }
 
 function describeModel(Model: E.AnyModelClass) {
-    const fields: { name: string; type: ReturnType<typeof describeType>; description?: string; hasDefault: boolean }[] = [];
+    const pkIdx = describeIndex(Model);
+    const pkFields = new Set(pkIdx.fields);
+    const fields: { name: string; type: TypeInfo; description?: string; hasDefault: boolean; isPk: boolean }[] = [];
     for (const [name, cfg] of Object.entries(Model.fields) as [string, E.FieldConfig<unknown>][]) {
         fields.push({
             name,
             type: describeType(cfg.type),
             description: cfg.description,
             hasDefault: cfg.default !== undefined,
+            isPk: pkFields.has(name),
         });
     }
     const indexes: { name: string; info: ReturnType<typeof describeIndex> }[] = [{
         name: '(primary)',
-        info: describeIndex(Model),
+        info: pkIdx,
     }];
     for (const [name, idx] of Object.entries((Model as any)._secondaries || {})) {
         indexes.push({ name, info: describeIndex(idx) });
@@ -214,6 +315,49 @@ class DashboardAPI {
         const instance = (Model as any).get(...pkArgs);
         if (!instance) throw new Error('Record not found');
         return new ST(instance);
+    }
+
+    async createRecord(modelName: string, values: Record<string, any>): Promise<any> {
+        const Model = modelByName(modelName);
+        const parsed: Record<string, any> = {};
+        for (const [fieldName, jsonValue] of Object.entries(values)) {
+            const fieldConfig = Model.fields[fieldName] as E.FieldConfig<unknown> | undefined;
+            if (!fieldConfig) continue;
+            if ((fieldConfig.type as any).kind === 'id') continue; // auto-generated
+            const v = parseValueFromJson(fieldConfig.type, jsonValue);
+            if (v !== undefined) parsed[fieldName] = v;
+        }
+        return await E.transact(() => {
+            const instance = new (Model as any)(parsed);
+            const cls: any = instance.constructor;
+            const pkBytes = instance.getPrimaryKey?.();
+            const pkArr = pkBytes && cls._pkToArray ? cls._pkToArray(pkBytes) : null;
+            const pk = pkArr ? (pkArr.length === 1 ? pkArr[0] : pkArr) : null;
+            return serializeValue(pk);
+        });
+    }
+
+    async updateRecord(modelName: string, pk: any, values: Record<string, any>): Promise<void> {
+        const Model = modelByName(modelName);
+        const pkArgs = Array.isArray(pk) ? pk : [pk];
+        const instance = (Model as any).get(...pkArgs);
+        if (!instance) throw new Error(`Record not found: ${JSON.stringify(pk)}`);
+        await E.transact(() => {
+            for (const [fieldName, jsonValue] of Object.entries(values)) {
+                const fieldConfig = Model.fields[fieldName] as E.FieldConfig<unknown> | undefined;
+                if (!fieldConfig) continue;
+                if ((fieldConfig.type as any).kind === 'id') continue; // immutable
+                (instance as any)[fieldName] = parseValueFromJson(fieldConfig.type, jsonValue);
+            }
+        });
+    }
+
+    async deleteRecord(modelName: string, pk: any): Promise<void> {
+        const Model = modelByName(modelName);
+        const pkArgs = Array.isArray(pk) ? pk : [pk];
+        const instance = (Model as any).get(...pkArgs);
+        if (!instance) throw new Error(`Record not found: ${JSON.stringify(pk)}`);
+        await E.transact(() => { instance.delete(); });
     }
 
     getDebugState(mode: 'channels' | 'sockets' | 'workers' | 'kv') {

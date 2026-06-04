@@ -11,16 +11,22 @@ const root = resolve(here, '..');
 const outDir = resolve(root, 'build/dashboard');
 mkdirSync(outDir, { recursive: true });
 
+const debug = process.argv.includes('--debug');
 const result = await esbuild.build({
     entryPoints: [resolve(here, 'client/main.ts')],
     bundle: true,
     platform: 'browser',
     format: 'esm',
-    minify: true,
-    sourcemap: false,
+    minify: !debug,
+    sourcemap: debug ? 'inline' : false,
     write: false,
     tsconfig: resolve(root, 'tsconfig.client.json'),
 });
+if (debug) {
+    const dbgJs = result.outputFiles[0].text;
+    console.log('Symbol("target") occurrences (>1 means duplicate Aberdeen):',
+        (dbgJs.match(/Symbol\("target"\)/g) || []).length);
+}
 if (result.errors.length) {
     for (const e of result.errors) console.error(e.text);
     process.exit(1);

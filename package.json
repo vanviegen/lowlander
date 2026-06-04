@@ -40,7 +40,7 @@
     "build:docs": "rm -rf skill ; mkdir skill ; cat skill-header.md README.md > skill/SKILL.md && readme-tsdoc --split --file skill/SKILL.md && readme-tsdoc --repo-url https://github.com/vanviegen/lowlander",
     "typecheck": "npx tsc -b",
     "clean": "rm -rf build dist skill",
-    "prepack": "npm install && npm run build",
+    "prepack": "npm run build",
     "test": "vitest run",
     "example": "npm run build && (cd examples/helloworld && npm install) && node build/examples/helloworld/server/main.js",
     "postinstall": "[ -f .local-post-install.sh ] && sh .local-post-install.sh || true"
@@ -58,6 +58,7 @@
     "esbuild": "^0.28.0",
     "readme-tsdoc": "^1.1.8",
     "sirv": "^3.0.2",
+    "skye": "*",
     "tsx": "^4.0.0",
     "vitest": "^4.1.7"
   },
