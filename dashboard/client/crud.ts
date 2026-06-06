@@ -172,7 +172,7 @@ function renderOptionalEditor(
     A('div', () => {
         // Label + toggle row — checkbox uses A.ref so Aberdeen's bind= works
         A('div', 'display:flex align-items:center gap:$2 mb:$1', () => {
-            if (label) A('span', 'fg:$sFgMuted font-size:0.85em font-weight:600 text-transform:uppercase letter-spacing:0.04em', '#', label);
+            if (label) A('span', 'fg:$s-fg-muted font-size:0.85em font-weight:600 text-transform:uppercase letter-spacing:0.04em', '#', label);
             S.checkbox({ label: 'set', disabled: readOnly, bind: A.ref($isSet, 'v') });
         });
         // Inner editor: depends on $isSet.v, NOT on $bind.value — so typing
@@ -257,13 +257,13 @@ function renderCollectionEditor(
     const $len = A.proxy({ v: ($items as any[]).length });
 
     A('div', () => {
-        if (label) A('label', 'display:block fg:$sFgMuted font-size:0.85em font-weight:600 text-transform:uppercase letter-spacing:0.04em mb:$1', '#', label);
+        if (label) A('label', 'display:block fg:$s-fg-muted font-size:0.85em font-weight:600 text-transform:uppercase letter-spacing:0.04em mb:$1', '#', label);
 
-        A('div', 'display:flex flex-direction:column gap:$2 p:$2 bg:$sSurfaceHi r:$sRadius border: 1px solid $sBorder;', () => {
+        A('div', 'display:flex flex-direction:column gap:$2 p:$2 bg:$s-panelHi r:$s-radius border: 1px solid $s-border;', () => {
             A(() => {
                 const len: number = $len.v;
                 if (len === 0) {
-                    A('span', 'fg:$sFgFaint font-size:0.9em', '#(empty)');
+                    A('span', 'fg:$s-fg-faint font-size:0.9em', '#(empty)');
                 }
                 for (let i = 0; i < len; i++) {
                     const idx = i;
@@ -276,10 +276,8 @@ function renderCollectionEditor(
                         if (!readOnly) {
                             S.button({
                                 text: '×',
-                                variant: 'outlined',
-                                color: 'danger',
                                 size: 'sm',
-                                root: 'flex-shrink:0 mt:$3',
+                                attrs: '.outlined.danger flex-shrink:0 mt:$3',
                                 click: () => {
                                     ($items as any[]).splice(idx, 1);
                                     $len.v = ($items as any[]).length;
@@ -293,7 +291,7 @@ function renderCollectionEditor(
             if (!readOnly) {
                 S.button({
                     text: `+ Add ${innerType.display}`,
-                    variant: 'tonal',
+                    attrs: '.tonal',
                     size: 'sm',
                     click: () => {
                         ($items as any[]).push({ v: defaultEditValue(innerType) });
@@ -330,29 +328,26 @@ function renderRecordEditor(
     });
 
     A('div', () => {
-        if (label) A('label', 'display:block fg:$sFgMuted font-size:0.85em font-weight:600 text-transform:uppercase letter-spacing:0.04em mb:$1', '#', label);
+        if (label) A('label', 'display:block fg:$s-fg-muted font-size:0.85em font-weight:600 text-transform:uppercase letter-spacing:0.04em mb:$1', '#', label);
 
-        A('div', 'display:flex flex-direction:column gap:$2 p:$2 bg:$sSurfaceHi r:$sRadius border: 1px solid $sBorder;', () => {
+        A('div', 'display:flex flex-direction:column gap:$2 p:$2 bg:$s-panelHi r:$s-radius border: 1px solid $s-border;', () => {
             A(() => {
                 const len: number = $eLen.v;
-                if (len === 0) A('span', 'fg:$sFgFaint font-size:0.9em', '#(empty)');
+                if (len === 0) A('span', 'fg:$s-fg-faint font-size:0.9em', '#(empty)');
                 for (let i = 0; i < len; i++) {
                     const idx = i;
                     A('div', 'display:flex gap:$2 align-items:flex-start', () => {
-                        A('code', 'flex-shrink:0 font-size:0.85em mt:$3 fg:$sFgMuted', '#', ($entries as any)[idx].k);
+                        A('code', 'flex-shrink:0 font-size:0.85em mt:$3 fg:$s-fg-muted', '#', ($entries as any)[idx].k);
                         A('div', 'flex:1', () => {
                             const $item = A.ref(($entries as any)[idx], 'v');
                             renderFieldEditor(valueType, $item, proxy, undefined, readOnly);
                         });
                         if (!readOnly) {
                             S.button({
-                                text: '×', variant: 'outlined', color: 'danger', size: 'sm',
-                                root: 'flex-shrink:0 mt:$3',
-                                click: () => {
-                                    ($entries as any[]).splice(idx, 1);
-                                    $eLen.v = ($entries as any[]).length;
-                                },
-                            });
+                                text: '×', attrs: '.outlined.danger flex-shrink:0 mt:$3', size: 'sm', click: () => {
+                                ($entries as any[]).splice(idx, 1);
+                                $eLen.v = ($entries as any[]).length;
+                            }});
                         }
                     });
                 }
@@ -361,7 +356,7 @@ function renderRecordEditor(
             if (!readOnly) {
                 S.button({
                     text: '+ Add entry',
-                    variant: 'tonal',
+                    attrs: '.tonal',
                     size: 'sm',
                     click: async () => {
                         const newKey = await S.prompt('Key name:');
@@ -396,7 +391,7 @@ function renderJsonEditor($bind: { value: any }, label?: string, readOnly = fals
     // textarea is never recreated (which would lose focus on each keystroke).
     S.textarea({ label, disabled: readOnly, rows: 3, bind: A.ref($str, 'v') });
     A(() => {
-        if ($error.v) A('div', 'fg:$sDanger font-size:0.82em mt:$1', '#', $error.v);
+        if ($error.v) A('div', 'fg:$s-danger font-size:0.82em mt:$1', '#', $error.v);
     });
 }
 
@@ -447,9 +442,9 @@ export function openCreateModal(
                             }
                         },
                     });
-                    S.button({ text: 'Cancel', variant: 'outlined', color: 'neutral', click: close });
+                    S.button({ text: 'Cancel', attrs: '.outlined.neutral', click: close });
                     A(() => {
-                        if ($status.error) A('span', 'fg:$sDanger font-size:0.85em', '#', $status.error);
+                        if ($status.error) A('span', 'fg:$s-danger font-size:0.85em', '#', $status.error);
                     });
                 },
             });
@@ -504,9 +499,9 @@ export function openEditModal(
                             }
                         },
                     });
-                    S.button({ text: 'Cancel', variant: 'outlined', color: 'neutral', click: close });
+                    S.button({ text: 'Cancel', attrs: '.outlined.neutral', click: close });
                     A(() => {
-                        if ($status.error) A('span', 'fg:$sDanger font-size:0.85em', '#', $status.error);
+                        if ($status.error) A('span', 'fg:$s-danger font-size:0.85em', '#', $status.error);
                     });
                 },
             });
@@ -526,18 +521,18 @@ export function openDeleteConfirm(
     S.dialog({
         header: `Delete ${modelName}`,
         content: (close) => {
-            A('p', 'fg:$sFg m:0', () => {
+            A('p', 'fg:$s-fg m:0', () => {
                 A('#Delete ');
                 A('strong', '#', displayLabel);
                 A('#? This cannot be undone.');
             });
             A(() => {
-                if ($status.error) A('p', 'fg:$sDanger m:0', '#', $status.error);
+                if ($status.error) A('p', 'fg:$s-danger m:0', '#', $status.error);
             });
             A('div', 'display:flex gap:$2 mt:$3', () => {
                 S.button({
                     text: 'Delete',
-                    color: 'danger',
+                    attrs: '.danger',
                     disabled: A.peek(() => $status.deleting),
                     click: async () => {
                         $status.deleting = true;
@@ -552,7 +547,7 @@ export function openDeleteConfirm(
                         }
                     },
                 });
-                S.button({ text: 'Cancel', variant: 'outlined', color: 'neutral', click: close });
+                S.button({ text: 'Cancel', attrs: '.outlined.neutral', click: close });
             });
         },
     });

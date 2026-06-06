@@ -69,18 +69,18 @@ function effectivePk(): string { return url.pk === '-' ? '' : url.pk; }
 
 const tableClass = A.insertCss({
     '&': 'w:100% border-collapse:collapse font-size:12.5px',
-    '& th,& td': 'text-align:left p: 4px 8px; border-bottom: 1px solid $sBorder; vertical-align:top',
-    '& th': 'bg:$sSurfaceHi fg:$sFgMuted font-weight:600',
+    '& th,& td': 'text-align:left p: 4px 8px; border-bottom: 1px solid $s-border; vertical-align:top',
+    '& th': 'bg:$s-panelHi fg:$s-fg-muted font-weight:600',
     '& tbody tr': 'cursor:default',
     '& tbody tr:hover': 'background:#ffffff08',
     '& tbody tr.selectable': 'cursor:pointer',
-    '& tbody tr.selected': 'background: color-mix(in srgb, var(--sPrimary) 12%, transparent);',
-    '& tbody tr.selected td:first-child': 'border-left: 3px solid $sPrimary; padding-left: 5px;',
+    '& tbody tr.selected': 'background: color-mix(in srgb, $s-primary 12%, transparent);',
+    '& tbody tr.selected td:first-child': 'border-left: 3px solid $s-primary; padding-left: 5px;',
 });
 
 A.insertGlobalCss({
-    '.sidebarSel': 'background: color-mix(in srgb, var(--sPrimary) 12%, transparent); box-shadow: inset 3px 0 0 var(--sPrimary)',
-    '.tag': 'display:inline-block bg:$sSurfaceHi fg:$sFgMuted p: 1px 6px; r:3px font-size:11px ml:$1',
+    '.sidebarSel': 'background: color-mix(in srgb, $s-primary 12%, transparent); box-shadow: inset 3px 0 0 $s-primary',
+    '.tag': 'display:inline-block bg:$s-panelHi fg:$s-fg-muted p: 1px 6px; r:3px font-size:11px ml:$1',
 });
 
 function login() {
@@ -90,17 +90,17 @@ function login() {
         content: () => {
             A(() => {
                 if ($state.connecting && !$state.connection?.getError()) {
-                    A('p', 'text-align:center fg:$sFgMuted', '#Connecting…');
+                    A('p', 'text-align:center fg:$s-fg-muted', '#Connecting…');
                     return;
                 }
                 S.form({
                     submit: () => attemptLogin(),
                     content: () => {
                         S.textline({ label: 'WebSocket URL', bind: A.ref($state, 'wsUrl') });
-                        S.textline({ label: 'Password', type: 'password', bind: A.ref($state, 'password'), control: 'autofocus=' });
+                        S.textline({ label: 'Password', type: 'password', bind: A.ref($state, 'password'), inputAttrs: 'autofocus=autofocus' });
                         A(() => {
                             const err = $state.connection?.getError() || $state.loginError;
-                            if (err) A('p', 'fg:$sDanger m:0', 'text=', err);
+                            if (err) A('p', 'fg:$s-danger m:0', 'text=', err);
                         });
                     },
                     actions: () => S.button({
@@ -155,16 +155,16 @@ function logout() {
 }
 
 function sidebar() {
-    A('aside', 'w:280px bg:$sSurface border-right: 1px solid $sBorder; display:flex flex-direction:column overflow:hidden', () => {
-        A('div', 'p:$3 border-bottom: 1px solid $sBorder; display:flex justify-content:space-between align-items:center', () => {
+    A('aside', 'w:280px bg:$s-panel border-right: 1px solid $s-border; display:flex flex-direction:column overflow:hidden', () => {
+        A('div', 'p:$3 border-bottom: 1px solid $s-border; display:flex justify-content:space-between align-items:center', () => {
             A('strong#Lowlander');
-            S.button({ text: 'Logout', variant: 'outlined', color: 'destroy', size: 'sm', click: logout });
+            S.button({ text: 'Logout', attrs: '.destroy.outlined', size: 'sm', click: logout });
         });
         A('div', 'overflow:auto flex:1 p:$2', () => {
             if (!authProxy) return;
             sidebarModels();
-            A('div', 'border-top: 1px solid $sBorder; mt:$2 pt:$2', () => {
-                A('div', 'p: 6px 8px; r:$sRadius cursor:pointer',
+            A('div', 'border-top: 1px solid $s-border; mt:$2 pt:$2', () => {
+                A('div', 'p: 6px 8px; r:$s-radius cursor:pointer',
                     'click=', () => { go({ path: route.path, search: { debug: '1' } }); },
                     () => {
                         A(() => A('.sidebarSel=', url.debug));
@@ -178,11 +178,11 @@ function sidebar() {
 function sidebarModels() {
     const models = authProxy!.serverProxy.listModels();
     A(() => {
-        if (models.busy) { A('div', 'fg:$sFgMuted', '#Loading…'); return; }
-        if (models.error) { A('div', 'fg:$sDanger', 'text=', models.error.message); return; }
+        if (models.busy) { A('div', 'fg:$s-fg-muted', '#Loading…'); return; }
+        if (models.error) { A('div', 'fg:$s-danger', 'text=', models.error.message); return; }
         const list = models.value || [];
         for (const m of list) {
-            A('div', 'p: 6px 8px; r:$sRadius cursor:pointer',
+            A('div', 'p: 6px 8px; r:$s-radius cursor:pointer',
                 'click=', () => { go({ path: route.path, search: { model: m.tableName } }); },
                 () => {
                     A(() => A('.sidebarSel=', !url.debug && url.model === m.tableName));
@@ -200,7 +200,7 @@ function mainArea() {
         if (!authProxy) return;
         if (url.debug) debugView();
         else if (url.model) modelDetail();
-        else A('div', 'fg:$sFgMuted p:$4 text-align:center', '#Select a model from the sidebar');
+        else A('div', 'fg:$s-fg-muted p:$4 text-align:center', '#Select a model from the sidebar');
     });
 }
 
@@ -208,25 +208,25 @@ function modelDetail() {
     const name = url.model;
     const info = authProxy!.serverProxy.getModel(name);
     A(() => {
-        if (info.busy) { A('div', 'fg:$sFgMuted', '#Loading…'); return; }
-        if (info.error) { A('div', 'fg:$sDanger', 'text=', info.error.message); return; }
+        if (info.busy) { A('div', 'fg:$s-fg-muted', '#Loading…'); return; }
+        if (info.error) { A('div', 'fg:$s-danger', 'text=', info.error.message); return; }
         const m = info.value;
         if (!m) return;
 
         A('h2', 'm:0 mb:$2', 'text=', m.tableName);
 
         A('section', 'mb:$4', () => {
-            A('h3#Fields', 'm:0 mb:$2 fg:$sFgMuted font-weight:600');
+            A('h3#Fields', 'm:0 mb:$2 fg:$s-fg-muted font-weight:600');
             A('table', tableClass, () => {
                 A('thead tr', () => { A('th#Name'); A('th#Type'); A('th#Linked'); A('th#Default'); A('th#Description'); });
                 A('tbody', () => {
                     for (const f of m.fields) {
                         A('tr', () => {
                             A('td', () => A('code', 'text=', f.name));
-                            A('td', 'fg:$sSuccess', 'text=', f.type.display);
+                            A('td', 'fg:$s-success', 'text=', f.type.display);
                             A('td', () => { const lm = f.type.linkedModel; if (lm) modelLink(lm); });
                             A('td', 'text=', f.hasDefault ? '✓' : '');
-                            A('td', 'fg:$sFgMuted', 'text=', f.description || '');
+                            A('td', 'fg:$s-fg-muted', 'text=', f.description || '');
                         });
                     }
                 });
@@ -234,7 +234,7 @@ function modelDetail() {
         });
 
         A('section', 'mb:$4', () => {
-            A('h3#Indexes', 'm:0 mb:$2 fg:$sFgMuted font-weight:600');
+            A('h3#Indexes', 'm:0 mb:$2 fg:$s-fg-muted font-weight:600');
             indexesTable(m);
         });
 
@@ -244,8 +244,8 @@ function modelDetail() {
             if (!idx) return;
             A('section', 'mb:$4', () => {
                 A('div', 'display:flex justify-content:space-between align-items:center mb:$2', () => {
-                    A('h3', 'm:0 fg:$sFgMuted font-weight:600', 'text=', `Data for ${cur}`);
-                    S.button({ text: '+ New', variant: 'outlined', size: 'sm', click: () => {
+                    A('h3', 'm:0 fg:$s-fg-muted font-weight:600', 'text=', `Data for ${cur}`);
+                    S.button({ text: '+ New', attrs: '.outlined', size: 'sm', click: () => {
                         openCreateModal(authProxy!, m.tableName, m.fields, () => { $state.indexRefreshKey++; });
                     }});
                 });
@@ -254,7 +254,7 @@ function modelDetail() {
         });
 
         if (m.streamTypes.length) A('section', 'mb:$4', () => {
-            A('h3#Stream types', 'm:0 mb:$2 fg:$sFgMuted font-weight:600');
+            A('h3#Stream types', 'm:0 mb:$2 fg:$s-fg-muted font-weight:600');
             streamTypesTable(m);
         });
     });
@@ -288,7 +288,7 @@ function indexesTable(m: any) {
                 }, () => {
                     A(() => A('.selected=', effectiveIndex() === idx.name));
                     A('td', () => A('code', 'text=', idx.name));
-                    A('td', 'fg:$sSuccess', 'text=', idx.info.kind);
+                    A('td', 'fg:$s-success', 'text=', idx.info.kind);
                     A('td', 'text=', idx.info.fields.join(', ') || '(computed)');
                 });
             }
@@ -323,7 +323,7 @@ function streamTypesTable(m: any) {
 }
 
 function streamFieldsInline(sel: any, fieldByName: Record<string, any>) {
-    if (sel === true) { A('span', 'fg:$sFgMuted', '#(scalar)'); return; }
+    if (sel === true) { A('span', 'fg:$s-fg-muted', '#(scalar)'); return; }
     if (!sel || typeof sel !== 'object') { A('span', 'text=', String(sel)); return; }
     for (const [k, v] of Object.entries(sel)) {
         if (typeof v === 'number') {
@@ -343,13 +343,13 @@ function streamFieldsInline(sel: any, fieldByName: Record<string, any>) {
 function streamLiveCell(modelName: string, streamTypeId: number) {
     A(() => {
         const pkRaw = effectivePk();
-        if (!pkRaw) { A('span', 'fg:$sFgMuted', '#(select a row)'); return; }
+        if (!pkRaw) { A('span', 'fg:$s-fg-muted', '#(select a row)'); return; }
         let pk: any;
         try { pk = JSON.parse(pkRaw); } catch { pk = pkRaw; }
         const $stream = authProxy!.serverProxy.streamRecord(modelName, streamTypeId, pk);
         A(() => {
-            if ($stream.busy) { A('span', 'fg:$sFgMuted', '#…'); return; }
-            if ($stream.error) { A('span', 'fg:$sDanger', 'text=', $stream.error.message); return; }
+            if ($stream.busy) { A('span', 'fg:$s-fg-muted', '#…'); return; }
+            if ($stream.error) { A('span', 'fg:$s-danger', 'text=', $stream.error.message); return; }
             A.dump($stream.value);
         });
     });
@@ -370,9 +370,9 @@ function indexBrowser(m: any, idx: any) {
 
     A('div', 'display:flex flex-direction:column', () => {
         A('div', 'display:flex flex-wrap:wrap gap:$2 align-items:center mb:$2', () => {
-            S.textline({ placeholder: 'search', root: 'flex:1 min-w:200px', bind: searchBind });
+            S.textline({ placeholder: 'search', attrs: 'flex:1 min-w:200px', bind: searchBind });
             S.checkbox({ label: 'reverse', bind: reverseBind });
-            S.button({ text: '↺', variant: 'outlined', size: 'sm', ariaLabel: 'Refresh',
+            S.button({ text: '↺', attrs: '.outlined', size: 'sm', ariaLabel: 'Refresh',
                 click: () => $state.indexRefreshKey++ });
         });
 
@@ -385,16 +385,16 @@ function indexBrowser(m: any, idx: any) {
             };
             const rows = authProxy!.serverProxy.findRecords(modelName, indexName, opts);
             A(() => {
-                if (rows.busy) { A('div', 'fg:$sFgMuted', '#Loading…'); return; }
-                if (rows.error) { A('div', 'fg:$sDanger', 'text=', rows.error.message); return; }
+                if (rows.busy) { A('div', 'fg:$s-fg-muted', '#Loading…'); return; }
+                if (rows.error) { A('div', 'fg:$s-danger', 'text=', rows.error.message); return; }
                 const r = rows.value;
                 if (!r) return;
                 if (!url.pk && r.rows.length > 0) {
                     url.pk = jsonStringify(r.rows[0].pk);
                     return;
                 }
-                A('div', 'fg:$sFgMuted mb:$2 font-size:12px', 'text=', `${r.rows.length} rows (scanned ${r.scanned})`);
-                if (!r.rows.length) { A('div', 'fg:$sFgMuted', '#(empty)'); return; }
+                A('div', 'fg:$s-fg-muted mb:$2 font-size:12px', 'text=', `${r.rows.length} rows (scanned ${r.scanned})`);
+                if (!r.rows.length) { A('div', 'fg:$s-fg-muted', '#(empty)'); return; }
                 A('div', 'overflow:auto', () => {
                     A('table', tableClass, () => {
                         const cols = Object.keys(r.rows[0].values);
@@ -411,7 +411,7 @@ function indexBrowser(m: any, idx: any) {
                                         A('td', () => A.dump(wrapForDump((row.values as any)[c])));
                                     }
                                     A('td', 'text-align:right white-space:nowrap p: 2px 4px;', () => {
-                                        S.button({ text: '✎', variant: 'outlined', size: 'sm', root: 'mr:$1',
+                                        S.button({ text: '✎', attrs: '.outlined mr:$1', size: 'sm',
                                             ariaLabel: 'Edit', click: (e) => {
                                                 e.stopPropagation();
                                                 openEditModal(authProxy!, modelName, m.fields, row.pk, row.values, () => {
@@ -419,15 +419,13 @@ function indexBrowser(m: any, idx: any) {
                                                 });
                                             },
                                         });
-                                        S.button({ text: '✕', variant: 'outlined', color: 'danger', size: 'sm',
-                                            ariaLabel: 'Delete', click: (e) => {
-                                                e.stopPropagation();
-                                                openDeleteConfirm(authProxy!, modelName, row.pk, pkStr, () => {
-                                                    $state.indexRefreshKey++;
-                                                    if (effectivePk() === pkStr) url.pk = '-';
-                                                });
-                                            },
-                                        });
+                                        S.button({ text: '✕', attrs: '.danger.outlined', size: 'sm', ariaLabel: 'Delete', click: (e) => {
+                                            e.stopPropagation();
+                                            openDeleteConfirm(authProxy!, modelName, row.pk, pkStr, () => {
+                                                $state.indexRefreshKey++;
+                                                if (effectivePk() === pkStr) url.pk = '-';
+                                            });
+                                        }});
                                     });
                                 });
                             }
@@ -438,7 +436,7 @@ function indexBrowser(m: any, idx: any) {
                     A('div', 'mt:$2', () => {
                         A(() => S.button({
                             text: `+ more (currently limit ${url.limit})`,
-                            variant: 'outlined', size: 'sm',
+                            attrs: '.outlined', size: 'sm',
                             click: () => { const cur = url.limit; url.limit = Math.min(cur * 5, cur + 250); },
                         }));
                     });
@@ -480,8 +478,8 @@ function debugView() {
             content: () => {
                 const debugInfo = authProxy!.serverProxy.getDebugState(t);
                 A(() => {
-                    if (debugInfo.busy) { A('div', 'fg:$sFgMuted', '#Loading…'); return; }
-                    if (debugInfo.error) { A('div', 'fg:$sDanger', 'text=', debugInfo.error.message); return; }
+                    if (debugInfo.busy) { A('div', 'fg:$s-fg-muted', '#Loading…'); return; }
+                    if (debugInfo.error) { A('div', 'fg:$s-danger', 'text=', debugInfo.error.message); return; }
                     const data = A.unproxy(debugInfo.value) as undefined | Record<string, Record<string, any>>;
                     if (!data) return;
                     const keySet = new Set<string>();

@@ -51,7 +51,7 @@ A.mount(document.body, () => {
                     content: () => S.textline({ label: 'Person name', bind: friendName }),
                     actions: () => {
                         A(() => {
-                            if (formBusy.value) A('span', 'fg:$sFgMuted', '#Busy…');
+                            if (formBusy.value) A('span', 'fg:$s-fg-muted', '#Busy…');
                             else S.button({ text: 'Toggle friend', type: 'submit' });
                         });
                     },
