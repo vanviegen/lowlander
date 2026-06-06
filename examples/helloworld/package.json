@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "lowlander": "*",
-    "mdui": "^2.1.4"
+    "lowlander": "*"
   }
 }

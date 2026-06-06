@@ -1,8 +1,9 @@
 import A from 'aberdeen';
 import { current as route, go } from 'aberdeen/route';
+import S from 'staffa';
 import { Connection, type ClientProxyObject } from 'lowlander/client';
 import type { _dashboard } from './shim-server.js';
-import { initSkyeTheme, openCreateModal, openEditModal, openDeleteConfirm } from './crud.js';
+import { openCreateModal, openEditModal, openDeleteConfirm } from './crud.js';
 
 type ServerExports = { _dashboard: typeof _dashboard };
 type API = ClientProxyObject<ServerExports>;
@@ -66,83 +67,50 @@ function setSearch(k: string, v: string) {
 function effectiveIndex() { return url.index || '(primary)'; }
 function effectivePk(): string { return url.pk === '-' ? '' : url.pk; }
 
-let tableClass = '';
+const tableClass = A.insertCss({
+    '&': 'w:100% border-collapse:collapse font-size:12.5px',
+    '& th,& td': 'text-align:left p: 4px 8px; border-bottom: 1px solid $sBorder; vertical-align:top',
+    '& th': 'bg:$sSurfaceHi fg:$sFgMuted font-weight:600',
+    '& tbody tr': 'cursor:default',
+    '& tbody tr:hover': 'background:#ffffff08',
+    '& tbody tr.selectable': 'cursor:pointer',
+    '& tbody tr.selected': 'background: color-mix(in srgb, var(--sPrimary) 12%, transparent);',
+    '& tbody tr.selected td:first-child': 'border-left: 3px solid $sPrimary; padding-left: 5px;',
+});
 
-function styles() {
-    initSkyeTheme(); // Wire Skye CSS vars to the dashboard's dark palette
-    A.setSpacingCssVars();
-
-    A.cssVars.bg = '#0f1117';
-    A.cssVars.panel = '#181b24';
-    A.cssVars.panel2 = '#1f2330';
-    A.cssVars.fg = '#e5e7eb';
-    A.cssVars.muted = '#94a3b8';
-    A.cssVars.accent = '#60a5fa';
-    A.cssVars.accent2 = '#34d399';
-    A.cssVars.danger = '#f87171';
-    A.cssVars.border = '#2a2f3d';
-
-    A.insertGlobalCss({
-        'html,body': 'm:0 p:0 bg:$bg fg:$fg font-family: -apple-system, system-ui, sans-serif; font-size:14px; h:100vh',
-        'body': 'display:flex flex-direction:column',
-        'a': 'color:$accent text-decoration:none cursor:pointer',
-        'a:hover': 'text-decoration:underline',
-        'input,select,textarea,button': 'font-family:inherit font-size:inherit',
-        'input[type=text],input[type=password],input:not([type]),select,textarea':
-            'bg:$panel2 fg:$fg border: 1px solid $border; r:4px p: 6px 8px; outline:none box-sizing:border-box w:100%',
-        'input:focus,textarea:focus,select:focus': 'border-color:$accent',
-        'button': 'bg:$accent fg:#0b1220 border:0 r:4px p: 6px 12px; cursor:pointer font-weight:600',
-        'button:hover': 'opacity:0.9',
-        'button.ghost': 'bg:transparent fg:$accent border: 1px solid $border;',
-        'code,pre': 'font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12.5px',
-        'pre': 'bg:#0b0d14 p:$3 r:6px overflow:auto m:0',
-        '.tag': 'display:inline-block bg:$panel2 fg:$muted p: 1px 6px; r:3px font-size:11px ml:$1',
-        '.sidebarSel': 'bg:#1e3251 box-shadow: inset 3px 0 0 $accent;',
-        '.row': 'display:flex gap:$2 align-items:center',
-        '.col': 'display:flex flex-direction:column gap:$2',
-        'ul': 'margin-block-start:0 margin-block-end:0',
-    });
-
-    tableClass = A.insertCss({
-        '&': 'w:100% border-collapse:collapse font-size:12.5px',
-        '& th,& td': 'text-align:left p: 4px 8px; border-bottom: 1px solid $border; vertical-align:top',
-        '& th': 'bg:$panel2 fg:$muted font-weight:600',
-        '& tbody tr': 'cursor:default',
-        '& tbody tr:hover': 'bg:#ffffff08',
-        '& tbody tr.selectable': 'cursor:pointer',
-        '& tbody tr.selected': 'bg:#1e3251',
-        '& tbody tr.selected td:first-child': 'border-left: 3px solid $accent; padding-left: 5px;',
-    });
-}
+A.insertGlobalCss({
+    '.sidebarSel': 'background: color-mix(in srgb, var(--sPrimary) 12%, transparent); box-shadow: inset 3px 0 0 var(--sPrimary)',
+    '.tag': 'display:inline-block bg:$sSurfaceHi fg:$sFgMuted p: 1px 6px; r:3px font-size:11px ml:$1',
+});
 
 function login() {
-    A(() => {
-        const connError = $state.connection?.getError();
-        if ($state.connecting && !connError) {
-            A('div', 'display:flex align-items:center justify-content:center h:100vh fg:$muted', '#Connecting…');
-            return;
-        }
-        A('div', 'display:flex align-items:center justify-content:center h:100vh', () => {
-            A('form', 'bg:$panel p:$4 r:8px w:360px border: 1px solid $border; display:flex flex-direction:column gap:$3',
-                'submit=', (e: Event) => { e.preventDefault(); attemptLogin(); }, () => {
-                A('h2#Lowlander Dashboard', 'm:0');
-                A('label', () => {
-                    A('span#WebSocket URL', 'fg:$muted display:block mb:$1');
-                    A('input type=text bind=', A.ref($state, 'wsUrl'));
-                });
-                A('label', () => {
-                    A('span#Password', 'fg:$muted display:block mb:$1');
-                    A('input type=password bind=', A.ref($state, 'password'), 'autofocus=');
-                });
-                A(() => {
-                    const err = $state.connection?.getError() || $state.loginError;
-                    if (err) A('div', 'fg:$danger', () => A('text=', err));
-                });
-                A('button type=submit', () => {
-                    A(() => A($state.connected && !$state.authed ? 'text=Checking…' : 'text="Log in"'));
+    S.main({
+        title: 'Lowlander Dashboard',
+        maxWidth: '24rem',
+        content: () => {
+            A(() => {
+                if ($state.connecting && !$state.connection?.getError()) {
+                    A('p', 'text-align:center fg:$sFgMuted', '#Connecting…');
+                    return;
+                }
+                S.form({
+                    submit: () => attemptLogin(),
+                    content: () => {
+                        S.textline({ label: 'WebSocket URL', bind: A.ref($state, 'wsUrl') });
+                        S.textline({ label: 'Password', type: 'password', bind: A.ref($state, 'password'), control: 'autofocus=' });
+                        A(() => {
+                            const err = $state.connection?.getError() || $state.loginError;
+                            if (err) A('p', 'fg:$sDanger m:0', 'text=', err);
+                        });
+                    },
+                    actions: () => S.button({
+                        text: $state.connected && !$state.authed ? 'Checking…' : 'Log in',
+                        type: 'submit',
+                        disabled: $state.connected && !$state.authed,
+                    }),
                 });
             });
-        });
+        },
     });
 }
 
@@ -187,22 +155,20 @@ function logout() {
 }
 
 function sidebar() {
-    A('aside', 'w:280px bg:$panel border-right: 1px solid $border; display:flex flex-direction:column overflow:hidden', () => {
-        A('div', 'p:$3 border-bottom: 1px solid $border; display:flex justify-content:space-between align-items:center', () => {
+    A('aside', 'w:280px bg:$sSurface border-right: 1px solid $sBorder; display:flex flex-direction:column overflow:hidden', () => {
+        A('div', 'p:$3 border-bottom: 1px solid $sBorder; display:flex justify-content:space-between align-items:center', () => {
             A('strong#Lowlander');
-            A('button.ghost#Logout', 'click=', () => logout());
+            S.button({ text: 'Logout', variant: 'outlined', color: 'destroy', size: 'sm', click: logout });
         });
         A('div', 'overflow:auto flex:1 p:$2', () => {
             if (!authProxy) return;
             sidebarModels();
-            A('div', 'border-top: 1px solid $border; mt:$2 pt:$2', () => {
-                A('div', 'p: 6px 8px; r:4px cursor:pointer',
+            A('div', 'border-top: 1px solid $sBorder; mt:$2 pt:$2', () => {
+                A('div', 'p: 6px 8px; r:$sRadius cursor:pointer',
                     'click=', () => { go({ path: route.path, search: { debug: '1' } }); },
                     () => {
                         A(() => A('.sidebarSel=', url.debug));
-                        A('div', 'display:flex justify-content:space-between align-items:baseline', () => {
-                            A('span#⬡ WarpSocket debug');
-                        });
+                        A('span#⬡ WarpSocket debug');
                     });
             });
         });
@@ -212,11 +178,11 @@ function sidebar() {
 function sidebarModels() {
     const models = authProxy!.serverProxy.listModels();
     A(() => {
-        if (models.busy) { A('div', 'fg:$muted', '#Loading…'); return; }
-        if (models.error) { A('div', 'fg:$danger', 'text=', models.error.message); return; }
+        if (models.busy) { A('div', 'fg:$sFgMuted', '#Loading…'); return; }
+        if (models.error) { A('div', 'fg:$sDanger', 'text=', models.error.message); return; }
         const list = models.value || [];
         for (const m of list) {
-            A('div', 'p: 6px 8px; r:4px cursor:pointer',
+            A('div', 'p: 6px 8px; r:$sRadius cursor:pointer',
                 'click=', () => { go({ path: route.path, search: { model: m.tableName } }); },
                 () => {
                     A(() => A('.sidebarSel=', !url.debug && url.model === m.tableName));
@@ -229,13 +195,12 @@ function sidebarModels() {
     });
 }
 
-
 function mainArea() {
     A('main', 'flex:1 overflow:auto p:$4', () => {
         if (!authProxy) return;
         if (url.debug) debugView();
         else if (url.model) modelDetail();
-        else A('div', 'fg:$muted p:$4 text-align:center', '#Select a model from the sidebar');
+        else A('div', 'fg:$sFgMuted p:$4 text-align:center', '#Select a model from the sidebar');
     });
 }
 
@@ -243,25 +208,25 @@ function modelDetail() {
     const name = url.model;
     const info = authProxy!.serverProxy.getModel(name);
     A(() => {
-        if (info.busy) { A('div', 'fg:$muted', '#Loading…'); return; }
-        if (info.error) { A('div', 'fg:$danger', 'text=', info.error.message); return; }
+        if (info.busy) { A('div', 'fg:$sFgMuted', '#Loading…'); return; }
+        if (info.error) { A('div', 'fg:$sDanger', 'text=', info.error.message); return; }
         const m = info.value;
         if (!m) return;
 
         A('h2', 'm:0 mb:$2', 'text=', m.tableName);
 
         A('section', 'mb:$4', () => {
-            A('h3#Fields', 'm:0 mb:$2 fg:$muted font-weight:600');
+            A('h3#Fields', 'm:0 mb:$2 fg:$sFgMuted font-weight:600');
             A('table', tableClass, () => {
                 A('thead tr', () => { A('th#Name'); A('th#Type'); A('th#Linked'); A('th#Default'); A('th#Description'); });
                 A('tbody', () => {
                     for (const f of m.fields) {
                         A('tr', () => {
                             A('td', () => A('code', 'text=', f.name));
-                            A('td', 'fg:$accent2', 'text=', f.type.display);
+                            A('td', 'fg:$sSuccess', 'text=', f.type.display);
                             A('td', () => { const lm = f.type.linkedModel; if (lm) modelLink(lm); });
                             A('td', 'text=', f.hasDefault ? '✓' : '');
-                            A('td', 'fg:$muted', 'text=', f.description || '');
+                            A('td', 'fg:$sFgMuted', 'text=', f.description || '');
                         });
                     }
                 });
@@ -269,7 +234,7 @@ function modelDetail() {
         });
 
         A('section', 'mb:$4', () => {
-            A('h3#Indexes', 'm:0 mb:$2 fg:$muted font-weight:600');
+            A('h3#Indexes', 'm:0 mb:$2 fg:$sFgMuted font-weight:600');
             indexesTable(m);
         });
 
@@ -279,25 +244,22 @@ function modelDetail() {
             if (!idx) return;
             A('section', 'mb:$4', () => {
                 A('div', 'display:flex justify-content:space-between align-items:center mb:$2', () => {
-                    A('h3', 'm:0 fg:$muted font-weight:600', 'text=', `Data for ${cur}`);
-                    A('button.ghost', 'p: 2px 10px; font-size:11px', 'click=', () => {
-                        openCreateModal(authProxy!, m.tableName, m.fields, () => {
-                            $state.indexRefreshKey++;
-                        });
-                    }, '#+ New');
+                    A('h3', 'm:0 fg:$sFgMuted font-weight:600', 'text=', `Data for ${cur}`);
+                    S.button({ text: '+ New', variant: 'outlined', size: 'sm', click: () => {
+                        openCreateModal(authProxy!, m.tableName, m.fields, () => { $state.indexRefreshKey++; });
+                    }});
                 });
                 indexBrowser(m, idx);
             });
         });
 
         if (m.streamTypes.length) A('section', 'mb:$4', () => {
-            A('h3#Stream types', 'm:0 mb:$2 fg:$muted font-weight:600');
+            A('h3#Stream types', 'm:0 mb:$2 fg:$sFgMuted font-weight:600');
             streamTypesTable(m);
         });
     });
 }
 
-// Render a clickable link to another model
 function modelLink(modelName: string, pk?: any, display?: string) {
     A('a', 'click=', (e: Event) => {
         e.preventDefault();
@@ -326,7 +288,7 @@ function indexesTable(m: any) {
                 }, () => {
                     A(() => A('.selected=', effectiveIndex() === idx.name));
                     A('td', () => A('code', 'text=', idx.name));
-                    A('td', 'fg:$accent2', 'text=', idx.info.kind);
+                    A('td', 'fg:$sSuccess', 'text=', idx.info.kind);
                     A('td', 'text=', idx.info.fields.join(', ') || '(computed)');
                 });
             }
@@ -361,7 +323,7 @@ function streamTypesTable(m: any) {
 }
 
 function streamFieldsInline(sel: any, fieldByName: Record<string, any>) {
-    if (sel === true) { A('span', 'fg:$muted', '#(scalar)'); return; }
+    if (sel === true) { A('span', 'fg:$sFgMuted', '#(scalar)'); return; }
     if (!sel || typeof sel !== 'object') { A('span', 'text=', String(sel)); return; }
     for (const [k, v] of Object.entries(sel)) {
         if (typeof v === 'number') {
@@ -370,7 +332,7 @@ function streamFieldsInline(sel: any, fieldByName: Record<string, any>) {
                 if (linked) modelLink(linked, undefined, v.toString());
                 else A('#?');
             });
-        } else if (v === false) { // virtual/computed field
+        } else if (v === false) {
             A(`div#${k}*`);
         } else {
             A(`div#${k}`);
@@ -381,13 +343,13 @@ function streamFieldsInline(sel: any, fieldByName: Record<string, any>) {
 function streamLiveCell(modelName: string, streamTypeId: number) {
     A(() => {
         const pkRaw = effectivePk();
-        if (!pkRaw) { A('span', 'fg:$muted', '#(select a row)'); return; }
+        if (!pkRaw) { A('span', 'fg:$sFgMuted', '#(select a row)'); return; }
         let pk: any;
         try { pk = JSON.parse(pkRaw); } catch { pk = pkRaw; }
         const $stream = authProxy!.serverProxy.streamRecord(modelName, streamTypeId, pk);
         A(() => {
-            if ($stream.busy) { A('span', 'fg:$muted', '#…'); return; }
-            if ($stream.error) { A('span', 'fg:$danger', 'text=', $stream.error.message); return; }
+            if ($stream.busy) { A('span', 'fg:$sFgMuted', '#…'); return; }
+            if ($stream.error) { A('span', 'fg:$sDanger', 'text=', $stream.error.message); return; }
             A.dump($stream.value);
         });
     });
@@ -397,17 +359,21 @@ function indexBrowser(m: any, idx: any) {
     const modelName = m.tableName;
     const indexName = idx.name;
 
+    const searchBind = {
+        get value() { return url.search; },
+        set value(v: string | number) { url.search = String(v); url.limit = 10; },
+    };
+    const reverseBind = {
+        get value() { return url.reverse; },
+        set value(v: any) { url.reverse = Boolean(v); },
+    };
+
     A('div', 'display:flex flex-direction:column', () => {
         A('div', 'display:flex flex-wrap:wrap gap:$2 align-items:center mb:$2', () => {
-            A('input type=text flex:1 min-w:200px placeholder=search',
-                'value=', A.peek(() => url.search),
-                'input=', (e: any) => { url.search = e.target.value; url.limit = 10; });
-            A('label', 'display:flex align-items:center gap:$1 white-space:nowrap', () => {
-                A('input type=checkbox', 'checked=', url.reverse, 'change=', (e: any) => url.reverse = e.target.checked);
-                A('span', 'fg:$muted', '#reverse');
-            });
-            A('button.ghost', 'p: 2px 8px; font-size:11px', '#↺ refresh',
-                'click=', () => $state.indexRefreshKey++);
+            S.textline({ placeholder: 'search', root: 'flex:1 min-w:200px', bind: searchBind });
+            S.checkbox({ label: 'reverse', bind: reverseBind });
+            S.button({ text: '↺', variant: 'outlined', size: 'sm', ariaLabel: 'Refresh',
+                click: () => $state.indexRefreshKey++ });
         });
 
         A(() => {
@@ -419,23 +385,22 @@ function indexBrowser(m: any, idx: any) {
             };
             const rows = authProxy!.serverProxy.findRecords(modelName, indexName, opts);
             A(() => {
-                if (rows.busy) { A('div', 'fg:$muted', '#Loading…'); return; }
-                if (rows.error) { A('div', 'fg:$danger', 'text=', rows.error.message); return; }
+                if (rows.busy) { A('div', 'fg:$sFgMuted', '#Loading…'); return; }
+                if (rows.error) { A('div', 'fg:$sDanger', 'text=', rows.error.message); return; }
                 const r = rows.value;
                 if (!r) return;
-                // Auto-select first row when no explicit selection
                 if (!url.pk && r.rows.length > 0) {
                     url.pk = jsonStringify(r.rows[0].pk);
                     return;
                 }
-                A('div', 'fg:$muted mb:$2 font-size:12px', 'text=', `${r.rows.length} rows (scanned ${r.scanned})`);
-                if (!r.rows.length) { A('div', 'fg:$muted', '#(empty)'); return; }
+                A('div', 'fg:$sFgMuted mb:$2 font-size:12px', 'text=', `${r.rows.length} rows (scanned ${r.scanned})`);
+                if (!r.rows.length) { A('div', 'fg:$sFgMuted', '#(empty)'); return; }
                 A('div', 'overflow:auto', () => {
                     A('table', tableClass, () => {
                         const cols = Object.keys(r.rows[0].values);
                         A('thead tr', () => {
                             for (const c of cols) A('th', 'text=', c);
-                            A('th', 'w:1px'); // actions column
+                            A('th', 'w:1px');
                         });
                         A('tbody', () => {
                             for (const row of r.rows) {
@@ -446,24 +411,22 @@ function indexBrowser(m: any, idx: any) {
                                         A('td', () => A.dump(wrapForDump((row.values as any)[c])));
                                     }
                                     A('td', 'text-align:right white-space:nowrap p: 2px 4px;', () => {
-                                        A('button.ghost', 'p: 1px 6px; font-size:11px mr:$1', 'title=Edit', () => {
-                                            A('click=', (e: Event) => {
+                                        S.button({ text: '✎', variant: 'outlined', size: 'sm', root: 'mr:$1',
+                                            ariaLabel: 'Edit', click: (e) => {
                                                 e.stopPropagation();
                                                 openEditModal(authProxy!, modelName, m.fields, row.pk, row.values, () => {
                                                     $state.indexRefreshKey++;
                                                 });
-                                            });
-                                            A('#✎');
+                                            },
                                         });
-                                        A('button.ghost', 'p: 1px 6px; font-size:11px fg:$danger', 'title=Delete', () => {
-                                            A('click=', (e: Event) => {
+                                        S.button({ text: '✕', variant: 'outlined', color: 'danger', size: 'sm',
+                                            ariaLabel: 'Delete', click: (e) => {
                                                 e.stopPropagation();
                                                 openDeleteConfirm(authProxy!, modelName, row.pk, pkStr, () => {
                                                     $state.indexRefreshKey++;
                                                     if (effectivePk() === pkStr) url.pk = '-';
                                                 });
-                                            });
-                                            A('#✕');
+                                            },
                                         });
                                     });
                                 });
@@ -471,13 +434,13 @@ function indexBrowser(m: any, idx: any) {
                         });
                     });
                 });
-                // 'more' button
                 if (r.rows.length >= url.limit) {
                     A('div', 'mt:$2', () => {
-                        A('button.ghost', 'p: 2px 8px; font-size:11px', 'click=', () => {
-                            const cur = url.limit;
-                            url.limit = Math.min(cur * 5, cur + 250);
-                        }, () => A('span', 'text=', `+ more (currently limit ${url.limit})`));
+                        A(() => S.button({
+                            text: `+ more (currently limit ${url.limit})`,
+                            variant: 'outlined', size: 'sm',
+                            click: () => { const cur = url.limit; url.limit = Math.min(cur * 5, cur + 250); },
+                        }));
                     });
                 }
             });
@@ -507,46 +470,45 @@ function parseMaybe(s: string): any {
 }
 
 function debugView() {
-    const $mode = A.proxy({v: 'channels' as 'channels' | 'sockets' | 'workers' | 'kv'});
     A('h2#WarpSocket debug', 'm:0 mb:$3');
-    A('div', '.row mb:$3', () => {
-        for (const t of ['channels','sockets','workers','kv'] as const) {
-            A('button click=', () => $mode.v = t, () => {
-                A(() => A($mode.v === t ? 'bg:$accent fg:#0b1220' : 'bg:$panel2 fg:$fg border: 1px solid $border;'));
-                A('text=', t);
-            });
-        }
-    });
-    A(() => {
-        const debugInfo = authProxy!.serverProxy.getDebugState($mode.v);
-        A(() => {
-            if (debugInfo.busy) { A('div', 'fg:$muted', '#Loading…'); return; }
-            if (debugInfo.error) { A('div', 'fg:$danger', 'text=', debugInfo.error.message); return; }
-            const data = A.unproxy(debugInfo.value) as undefined | Record<string, Record<string, any>>;
-            if (!data) return;
-            const keySet = new Set<string>();
-            for (const obj of Object.values(data)) {
-                if (obj && typeof obj === 'object' && !(obj instanceof Uint8Array))
-                    for (const k of Object.keys(obj)) keySet.add(k);
-            }
-            const cols = [...keySet];
-            A('div', 'overflow:auto', () => {
-                A('table', tableClass, () => {
-                    A('thead tr', () => {
-                        A('th##');
-                        for (const k of cols) A('th', 'text=', k);
-                    });
-                    A('tbody', () => {
-                        for (const [idx, obj] of Object.entries(data)) {
-                            A('tr', () => {
-                                A('td', () => A('code', 'text=', idx));
-                                for (const k of cols) A('td', 'font-size:12px font-family:monospace', 'text=', debugCellText(obj?.[k]));
+    const $mode = A.proxy({ value: 'channels' as string });
+    S.tabs({
+        bind: $mode,
+        tabs: (['channels', 'sockets', 'workers', 'kv'] as const).map(t => ({
+            id: t,
+            label: t,
+            content: () => {
+                const debugInfo = authProxy!.serverProxy.getDebugState(t);
+                A(() => {
+                    if (debugInfo.busy) { A('div', 'fg:$sFgMuted', '#Loading…'); return; }
+                    if (debugInfo.error) { A('div', 'fg:$sDanger', 'text=', debugInfo.error.message); return; }
+                    const data = A.unproxy(debugInfo.value) as undefined | Record<string, Record<string, any>>;
+                    if (!data) return;
+                    const keySet = new Set<string>();
+                    for (const obj of Object.values(data)) {
+                        if (obj && typeof obj === 'object' && !(obj instanceof Uint8Array))
+                            for (const k of Object.keys(obj)) keySet.add(k);
+                    }
+                    const cols = [...keySet];
+                    A('div', 'overflow:auto', () => {
+                        A('table', tableClass, () => {
+                            A('thead tr', () => {
+                                A('th##');
+                                for (const k of cols) A('th', 'text=', k);
                             });
-                        }
+                            A('tbody', () => {
+                                for (const [idx, obj] of Object.entries(data)) {
+                                    A('tr', () => {
+                                        A('td', () => A('code', 'text=', idx));
+                                        for (const k of cols) A('td', 'font-size:12px font-family:monospace', 'text=', debugCellText(obj?.[k]));
+                                    });
+                                }
+                            });
+                        });
                     });
                 });
-            });
-        });
+            },
+        })),
     });
 }
 
@@ -555,7 +517,6 @@ function debugCellText(value: any): string {
     if (value instanceof Uint8Array) return escapeBytes([...value]);
     if (typeof value === 'object') {
         if (value.type === 'Buffer' && Array.isArray(value.data)) return escapeBytes(value.data);
-        // Buffer-like (proxied Uint8Array): sequential integer keys
         const keys = Object.keys(value);
         if (!Array.isArray(value) && keys.length > 0 && keys.length <= 4096 && keys.every((k, i) => k === String(i))) {
             const arr: number[] = [];
@@ -585,11 +546,9 @@ function escapeBytes(bytes: number[]): string {
     return s;
 }
 
-styles();
-
 A.mount(document.body, () => {
     if (!$state.authed) { login(); return; }
-    A('div', 'display:flex flex-direction:row h:100vh w:100vw overflow:hidden', () => {
+    A('div', 'display:flex h:100vh w:100vw overflow:hidden', () => {
         sidebar();
         mainArea();
     });
