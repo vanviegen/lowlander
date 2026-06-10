@@ -259,7 +259,7 @@ function renderCollectionEditor(
     A('div', () => {
         if (label) A('label', 'display:block fg:$s-fg-muted font-size:0.85em font-weight:600 text-transform:uppercase letter-spacing:0.04em mb:$1', '#', label);
 
-        A('div', 'display:flex flex-direction:column gap:$2 p:$2 bg:$s-panelHi r:$s-radius border: 1px solid $s-border;', () => {
+        A('div.s-s.raised', 'display:flex flex-direction:column gap:$2 p:$2 r:$s-radius-lg border: 1px solid $s-border;', () => {
             A(() => {
                 const len: number = $len.v;
                 if (len === 0) {
@@ -276,8 +276,7 @@ function renderCollectionEditor(
                         if (!readOnly) {
                             S.button({
                                 text: '×',
-                                size: 'sm',
-                                attrs: '.outlined.danger flex-shrink:0 mt:$3',
+                                attrs: '.outlined.danger .small flex-shrink:0 mt:$3',
                                 click: () => {
                                     ($items as any[]).splice(idx, 1);
                                     $len.v = ($items as any[]).length;
@@ -291,8 +290,7 @@ function renderCollectionEditor(
             if (!readOnly) {
                 S.button({
                     text: `+ Add ${innerType.display}`,
-                    attrs: '.tonal',
-                    size: 'sm',
+                    attrs: '.tonal .small',
                     click: () => {
                         ($items as any[]).push({ v: defaultEditValue(innerType) });
                         $len.v = ($items as any[]).length;
@@ -330,7 +328,7 @@ function renderRecordEditor(
     A('div', () => {
         if (label) A('label', 'display:block fg:$s-fg-muted font-size:0.85em font-weight:600 text-transform:uppercase letter-spacing:0.04em mb:$1', '#', label);
 
-        A('div', 'display:flex flex-direction:column gap:$2 p:$2 bg:$s-panelHi r:$s-radius border: 1px solid $s-border;', () => {
+        A('div.s-s.raised', 'display:flex flex-direction:column gap:$2 p:$2 r:$s-radius-lg border: 1px solid $s-border;', () => {
             A(() => {
                 const len: number = $eLen.v;
                 if (len === 0) A('span', 'fg:$s-fg-faint font-size:0.9em', '#(empty)');
@@ -344,7 +342,7 @@ function renderRecordEditor(
                         });
                         if (!readOnly) {
                             S.button({
-                                text: '×', attrs: '.outlined.danger flex-shrink:0 mt:$3', size: 'sm', click: () => {
+                                text: '×', attrs: '.outlined.danger .small flex-shrink:0 mt:$3', click: () => {
                                 ($entries as any[]).splice(idx, 1);
                                 $eLen.v = ($entries as any[]).length;
                             }});
@@ -356,8 +354,7 @@ function renderRecordEditor(
             if (!readOnly) {
                 S.button({
                     text: '+ Add entry',
-                    attrs: '.tonal',
-                    size: 'sm',
+                    attrs: '.tonal .small',
                     click: async () => {
                         const newKey = await S.prompt('Key name:');
                         if (!newKey || ($entries as any[]).some((e: any) => e.k === newKey)) return;

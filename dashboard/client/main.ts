@@ -1,6 +1,7 @@
 import A from 'aberdeen';
-import { current as route, go } from 'aberdeen/route';
+import * as route from 'aberdeen/route';
 import S from 'staffa';
+import type { Content } from 'staffa';
 import { Connection, type ClientProxyObject } from 'lowlander/client';
 import type { _dashboard } from './shim-server.js';
 import { openCreateModal, openEditModal, openDeleteConfirm } from './crud.js';
@@ -40,26 +41,26 @@ const $state = A.proxy({
 let api: API | undefined;
 let authProxy: ReturnType<API['_dashboard']> | undefined;
 
-// URL-backed state helpers (reactive via A.route.current.search)
+// URL-backed state — reactive via aberdeen/route
 const url = {
-    get debug() { return route.search.debug === '1'; },
+    get debug() { return route.current.search.debug === '1'; },
     set debug(v: boolean) { setSearch('debug', v ? '1' : ''); },
-    get model() { return route.search.model || ''; },
+    get model() { return route.current.search.model || ''; },
     set model(v: string) { setSearch('model', v); },
-    get index() { return route.search.index || ''; },
+    get index() { return route.current.search.index || ''; },
     set index(v: string) { setSearch('index', v); },
-    get search() { return route.search.search || ''; },
+    get search() { return route.current.search.search || ''; },
     set search(v: string) { setSearch('search', v); },
-    get reverse() { return route.search.reverse === '1'; },
+    get reverse() { return route.current.search.reverse === '1'; },
     set reverse(v: boolean) { setSearch('reverse', v ? '1' : ''); },
-    get limit() { return parseInt(route.search.limit || '10', 10) || 10; },
+    get limit() { return parseInt(route.current.search.limit || '10', 10) || 10; },
     set limit(v: number) { setSearch('limit', v === 10 ? '' : String(v)); },
-    get pk() { return route.search.pk || ''; },
+    get pk() { return route.current.search.pk || ''; },
     set pk(v: string) { setSearch('pk', v); },
 };
 
 function setSearch(k: string, v: string) {
-    const s = route.search;
+    const s = route.current.search;
     if (v === '' || v === undefined) delete s[k];
     else s[k] = v;
 }
@@ -67,21 +68,18 @@ function setSearch(k: string, v: string) {
 function effectiveIndex() { return url.index || '(primary)'; }
 function effectivePk(): string { return url.pk === '-' ? '' : url.pk; }
 
+// Table styling — Staffa provides the base (border-collapse, th/td padding/borders,
+// thead stronger border). We only add size, cursor, hover, and selection states.
 const tableClass = A.insertCss({
-    '&': 'w:100% border-collapse:collapse font-size:12.5px',
-    '& th,& td': 'text-align:left p: 4px 8px; border-bottom: 1px solid $s-border; vertical-align:top',
-    '& th': 'bg:$s-panelHi fg:$s-fg-muted font-weight:600',
+    '&': 'w:100% font-size:12.5px',
     '& tbody tr': 'cursor:default',
-    '& tbody tr:hover': 'background:#ffffff08',
+    '& tbody tr:hover': 'background: color-mix(in srgb, $s-fg 5%, transparent);',
     '& tbody tr.selectable': 'cursor:pointer',
-    '& tbody tr.selected': 'background: color-mix(in srgb, $s-primary 12%, transparent);',
-    '& tbody tr.selected td:first-child': 'border-left: 3px solid $s-primary; padding-left: 5px;',
+    '& tbody tr.selected': 'background: color-mix(in srgb, $s-accent 15%, transparent);',
+    '& tbody tr.selected td:first-child': 'border-left: 3px solid $s-accent; padding-left: 5px;',
 });
 
-A.insertGlobalCss({
-    '.sidebarSel': 'background: color-mix(in srgb, $s-primary 12%, transparent); box-shadow: inset 3px 0 0 $s-primary',
-    '.tag': 'display:inline-block bg:$s-panelHi fg:$s-fg-muted p: 1px 6px; r:3px font-size:11px ml:$1',
-});
+// ─── Login ───────────────────────────────────────────────────────────────────
 
 function login() {
     S.main({
@@ -154,108 +152,109 @@ function logout() {
     authProxy = undefined;
 }
 
-function sidebar() {
-    A('aside', 'w:280px bg:$s-panel border-right: 1px solid $s-border; display:flex flex-direction:column overflow:hidden', () => {
-        A('div', 'p:$3 border-bottom: 1px solid $s-border; display:flex justify-content:space-between align-items:center', () => {
-            A('strong#Lowlander');
-            S.button({ text: 'Logout', attrs: '.destroy.outlined', size: 'sm', click: logout });
-        });
-        A('div', 'overflow:auto flex:1 p:$2', () => {
-            if (!authProxy) return;
-            sidebarModels();
-            A('div', 'border-top: 1px solid $s-border; mt:$2 pt:$2', () => {
-                A('div', 'p: 6px 8px; r:$s-radius cursor:pointer',
-                    'click=', () => { go({ path: route.path, search: { debug: '1' } }); },
-                    () => {
-                        A(() => A('.sidebarSel=', url.debug));
-                        A('span#⬡ WarpSocket debug');
-                    });
-            });
-        });
-    });
-}
+// ─── Dashboard (authenticated) ───────────────────────────────────────────────
 
-function sidebarModels() {
+// Sidebar nav: reactive model list. Rendered as a Content function so drawMenu
+// calls it inside a reactive scope; models.busy/.value/.error drive re-renders.
+const navModels: Content = () => {
     const models = authProxy!.serverProxy.listModels();
     A(() => {
-        if (models.busy) { A('div', 'fg:$s-fg-muted', '#Loading…'); return; }
-        if (models.error) { A('div', 'fg:$s-danger', 'text=', models.error.message); return; }
-        const list = models.value || [];
-        for (const m of list) {
-            A('div', 'p: 6px 8px; r:$s-radius cursor:pointer',
-                'click=', () => { go({ path: route.path, search: { model: m.tableName } }); },
-                () => {
-                    A(() => A('.sidebarSel=', !url.debug && url.model === m.tableName));
-                    A('div', 'display:flex justify-content:space-between align-items:baseline', () => {
-                        A('span', 'text=', m.tableName);
-                        A('span.tag', 'text=', `${m.fieldCount}f ${m.indexCount}i ${m.streamTypeCount}s`);
-                    });
-                });
+        if (models.busy) {
+            A('p', 'p:$2 fg:$s-fg-muted font-size:0.9em m:0', '#Loading…');
+            return;
         }
+        if (models.error) {
+            A('p', 'p:$2 fg:$s-danger font-size:0.9em m:0', 'text=', models.error.message);
+            return;
+        }
+        for (const m of (models.value ?? [])) {
+            A('button.s-menu-item type=button', 'justify-content:space-between', () => {
+                A(() => { if (!url.debug && url.model === m.tableName) A('aria-current=page'); });
+                A('click=', () => route.go({ path: route.current.path, search: { model: m.tableName } }));
+                A('span', 'text=', m.tableName);
+                A('span', 'font-size:0.78em opacity:0.65', 'text=', `${m.fieldCount}f ${m.indexCount}i ${m.streamTypeCount}s`);
+            });
+        }
+    });
+};
+
+const navDebug: Content = () => {
+    A('button.s-menu-item type=button', () => {
+        A(() => { if (url.debug) A('aria-current=page'); });
+        A('click=', () => route.go({ path: route.current.path, search: { debug: '1' } }));
+        A('span.s-menu-icon aria-hidden=true #⬡');
+        A('#WarpSocket debug');
+    });
+};
+
+function dashboard() {
+    S.main({
+        icon: '⬡',
+        title: 'Lowlander',
+        menu: () => S.button({ text: 'Logout', attrs: '.neutral .outlined .small', click: logout }),
+        nav: { items: [navModels, { separator: true }, navDebug] },
+        content: () => {
+            if (url.debug) debugView();
+            else if (url.model) modelDetail();
+            else A('p', 'fg:$s-fg-muted text-align:center mt:$4', '#Select a model from the sidebar');
+        },
     });
 }
 
-function mainArea() {
-    A('main', 'flex:1 overflow:auto p:$4', () => {
-        if (!authProxy) return;
-        if (url.debug) debugView();
-        else if (url.model) modelDetail();
-        else A('div', 'fg:$s-fg-muted p:$4 text-align:center', '#Select a model from the sidebar');
-    });
-}
+// ─── Model detail ─────────────────────────────────────────────────────────────
 
 function modelDetail() {
     const name = url.model;
     const info = authProxy!.serverProxy.getModel(name);
     A(() => {
-        if (info.busy) { A('div', 'fg:$s-fg-muted', '#Loading…'); return; }
-        if (info.error) { A('div', 'fg:$s-danger', 'text=', info.error.message); return; }
+        if (info.busy) { A('p', 'fg:$s-fg-muted', '#Loading…'); return; }
+        if (info.error) { A('p', 'fg:$s-danger', 'text=', info.error.message); return; }
         const m = info.value;
         if (!m) return;
 
-        A('h2', 'm:0 mb:$2', 'text=', m.tableName);
-
-        A('section', 'mb:$4', () => {
-            A('h3#Fields', 'm:0 mb:$2 fg:$s-fg-muted font-weight:600');
-            A('table', tableClass, () => {
-                A('thead tr', () => { A('th#Name'); A('th#Type'); A('th#Linked'); A('th#Default'); A('th#Description'); });
-                A('tbody', () => {
-                    for (const f of m.fields) {
-                        A('tr', () => {
-                            A('td', () => A('code', 'text=', f.name));
-                            A('td', 'fg:$s-success', 'text=', f.type.display);
-                            A('td', () => { const lm = f.type.linkedModel; if (lm) modelLink(lm); });
-                            A('td', 'text=', f.hasDefault ? '✓' : '');
-                            A('td', 'fg:$s-fg-muted', 'text=', f.description || '');
-                        });
-                    }
+        S.box({
+            header: m.tableName,
+            content: () => {
+                A('table', tableClass, () => {
+                    A('thead tr', () => { A('th#Name'); A('th#Type'); A('th#Linked'); A('th#Default'); A('th#Description'); });
+                    A('tbody', () => {
+                        for (const f of m.fields) {
+                            A('tr', () => {
+                                A('td', () => A('code', 'text=', f.name));
+                                A('td', 'fg:$s-success', 'text=', f.type.display);
+                                A('td', () => { const lm = f.type.linkedModel; if (lm) modelLink(lm); });
+                                A('td', 'text=', f.hasDefault ? '✓' : '');
+                                A('td', 'fg:$s-fg-muted', 'text=', f.description || '');
+                            });
+                        }
+                    });
                 });
-            });
+            },
         });
 
-        A('section', 'mb:$4', () => {
-            A('h3#Indexes', 'm:0 mb:$2 fg:$s-fg-muted font-weight:600');
-            indexesTable(m);
+        S.box({
+            header: 'Indexes',
+            content: () => indexesTable(m),
         });
 
         A(() => {
             const cur = effectiveIndex();
             const idx = m.indexes.find((i: any) => i.name === cur);
             if (!idx) return;
-            A('section', 'mb:$4', () => {
-                A('div', 'display:flex justify-content:space-between align-items:center mb:$2', () => {
-                    A('h3', 'm:0 fg:$s-fg-muted font-weight:600', 'text=', `Data for ${cur}`);
-                    S.button({ text: '+ New', attrs: '.outlined', size: 'sm', click: () => {
+            S.box({
+                header: () => {
+                    A('span', 'flex:1', 'text=', `Data · ${cur}`);
+                    S.button({ text: '+ New', attrs: '.outlined .small', click: () => {
                         openCreateModal(authProxy!, m.tableName, m.fields, () => { $state.indexRefreshKey++; });
                     }});
-                });
-                indexBrowser(m, idx);
+                },
+                content: () => indexBrowser(m, idx),
             });
         });
 
-        if (m.streamTypes.length) A('section', 'mb:$4', () => {
-            A('h3#Stream types', 'm:0 mb:$2 fg:$s-fg-muted font-weight:600');
-            streamTypesTable(m);
+        if (m.streamTypes.length) S.box({
+            header: 'Stream types',
+            content: () => streamTypesTable(m),
         });
     });
 }
@@ -266,7 +265,7 @@ function modelLink(modelName: string, pk?: any, display?: string) {
         e.stopPropagation();
         const search: Record<string, string | number> = { model: modelName };
         if (pk !== undefined) { search.search = jsonStringify(pk); search.limit = 1; }
-        go({ path: route.path, search });
+        route.go({ path: route.current.path, search });
     }, 'text=', display ?? modelName);
 }
 
@@ -355,6 +354,8 @@ function streamLiveCell(modelName: string, streamTypeId: number) {
     });
 }
 
+// ─── Index browser ────────────────────────────────────────────────────────────
+
 function indexBrowser(m: any, idx: any) {
     const modelName = m.tableName;
     const indexName = idx.name;
@@ -368,33 +369,29 @@ function indexBrowser(m: any, idx: any) {
         set value(v: any) { url.reverse = Boolean(v); },
     };
 
-    A('div', 'display:flex flex-direction:column', () => {
-        A('div', 'display:flex flex-wrap:wrap gap:$2 align-items:center mb:$2', () => {
-            S.textline({ placeholder: 'search', attrs: 'flex:1 min-w:200px', bind: searchBind });
+    A('div', 'display:flex flex-direction:column gap:$3', () => {
+        A('div', 'display:flex flex-wrap:wrap gap:$2 align-items:center', () => {
+            S.textline({ placeholder: 'search', attrs: 'flex:1 min-w:180px', bind: searchBind });
             S.checkbox({ label: 'reverse', bind: reverseBind });
-            S.button({ text: '↺', attrs: '.outlined', size: 'sm', ariaLabel: 'Refresh',
+            S.button({ text: '↺', attrs: '.outlined .small', ariaLabel: 'Refresh',
                 click: () => $state.indexRefreshKey++ });
         });
 
         A(() => {
             void $state.indexRefreshKey;
-            const opts = {
-                search: parseMaybe(url.search),
-                reverse: url.reverse,
-                limit: url.limit,
-            };
+            const opts = { search: parseMaybe(url.search), reverse: url.reverse, limit: url.limit };
             const rows = authProxy!.serverProxy.findRecords(modelName, indexName, opts);
             A(() => {
-                if (rows.busy) { A('div', 'fg:$s-fg-muted', '#Loading…'); return; }
-                if (rows.error) { A('div', 'fg:$s-danger', 'text=', rows.error.message); return; }
+                if (rows.busy) { A('p', 'fg:$s-fg-muted', '#Loading…'); return; }
+                if (rows.error) { A('p', 'fg:$s-danger', 'text=', rows.error.message); return; }
                 const r = rows.value;
                 if (!r) return;
                 if (!url.pk && r.rows.length > 0) {
                     url.pk = jsonStringify(r.rows[0].pk);
                     return;
                 }
-                A('div', 'fg:$s-fg-muted mb:$2 font-size:12px', 'text=', `${r.rows.length} rows (scanned ${r.scanned})`);
-                if (!r.rows.length) { A('div', 'fg:$s-fg-muted', '#(empty)'); return; }
+                A('p', 'fg:$s-fg-muted font-size:0.85em m:0', 'text=', `${r.rows.length} rows (scanned ${r.scanned})`);
+                if (!r.rows.length) { A('p', 'fg:$s-fg-muted m:0', '#(empty)'); return; }
                 A('div', 'overflow:auto', () => {
                     A('table', tableClass, () => {
                         const cols = Object.keys(r.rows[0].values);
@@ -410,8 +407,8 @@ function indexBrowser(m: any, idx: any) {
                                     for (const c of cols) {
                                         A('td', () => A.dump(wrapForDump((row.values as any)[c])));
                                     }
-                                    A('td', 'text-align:right white-space:nowrap p: 2px 4px;', () => {
-                                        S.button({ text: '✎', attrs: '.outlined mr:$1', size: 'sm',
+                                    A('td', 'text-align:right white-space:nowrap', () => {
+                                        S.button({ text: '✎', attrs: '.outlined .small mr:$1',
                                             ariaLabel: 'Edit', click: (e) => {
                                                 e.stopPropagation();
                                                 openEditModal(authProxy!, modelName, m.fields, row.pk, row.values, () => {
@@ -419,13 +416,15 @@ function indexBrowser(m: any, idx: any) {
                                                 });
                                             },
                                         });
-                                        S.button({ text: '✕', attrs: '.danger.outlined', size: 'sm', ariaLabel: 'Delete', click: (e) => {
-                                            e.stopPropagation();
-                                            openDeleteConfirm(authProxy!, modelName, row.pk, pkStr, () => {
-                                                $state.indexRefreshKey++;
-                                                if (effectivePk() === pkStr) url.pk = '-';
-                                            });
-                                        }});
+                                        S.button({ text: '✕', attrs: '.danger .outlined .small',
+                                            ariaLabel: 'Delete', click: (e) => {
+                                                e.stopPropagation();
+                                                openDeleteConfirm(authProxy!, modelName, row.pk, pkStr, () => {
+                                                    $state.indexRefreshKey++;
+                                                    if (effectivePk() === pkStr) url.pk = '-';
+                                                });
+                                            },
+                                        });
                                     });
                                 });
                             }
@@ -433,13 +432,11 @@ function indexBrowser(m: any, idx: any) {
                     });
                 });
                 if (r.rows.length >= url.limit) {
-                    A('div', 'mt:$2', () => {
-                        A(() => S.button({
-                            text: `+ more (currently limit ${url.limit})`,
-                            attrs: '.outlined', size: 'sm',
-                            click: () => { const cur = url.limit; url.limit = Math.min(cur * 5, cur + 250); },
-                        }));
-                    });
+                    A(() => S.button({
+                        text: `+ more (currently limit ${url.limit})`,
+                        attrs: '.outlined .small',
+                        click: () => { const cur = url.limit; url.limit = Math.min(cur * 5, cur + 250); },
+                    }));
                 }
             });
         });
@@ -467,8 +464,9 @@ function parseMaybe(s: string): any {
     return s;
 }
 
+// ─── Debug view ───────────────────────────────────────────────────────────────
+
 function debugView() {
-    A('h2#WarpSocket debug', 'm:0 mb:$3');
     const $mode = A.proxy({ value: 'channels' as string });
     S.tabs({
         bind: $mode,
@@ -478,8 +476,8 @@ function debugView() {
             content: () => {
                 const debugInfo = authProxy!.serverProxy.getDebugState(t);
                 A(() => {
-                    if (debugInfo.busy) { A('div', 'fg:$s-fg-muted', '#Loading…'); return; }
-                    if (debugInfo.error) { A('div', 'fg:$s-danger', 'text=', debugInfo.error.message); return; }
+                    if (debugInfo.busy) { A('p', 'fg:$s-fg-muted', '#Loading…'); return; }
+                    if (debugInfo.error) { A('p', 'fg:$s-danger', 'text=', debugInfo.error.message); return; }
                     const data = A.unproxy(debugInfo.value) as undefined | Record<string, Record<string, any>>;
                     if (!data) return;
                     const keySet = new Set<string>();
@@ -544,12 +542,11 @@ function escapeBytes(bytes: number[]): string {
     return s;
 }
 
+// ─── Mount ────────────────────────────────────────────────────────────────────
+
 A.mount(document.body, () => {
     if (!$state.authed) { login(); return; }
-    A('div', 'display:flex h:100vh w:100vw overflow:hidden', () => {
-        sidebar();
-        mainArea();
-    });
+    dashboard();
 });
 
 if ($state.password) {

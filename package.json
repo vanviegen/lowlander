@@ -49,16 +49,16 @@
     "warpsocket": "^0.9.1"
   },
   "peerDependencies": {
-    "aberdeen": "^1.15.0",
+    "aberdeen": "^1.17.1",
     "edinburgh": "^0.6.4"
   },
   "devDependencies": {
     "@types/node": "^20.19.41",
-    "aberdeen": "^1.15.0",
+    "aberdeen": "^1.17.1",
     "esbuild": "^0.28.0",
     "readme-tsdoc": "^1.1.8",
     "sirv": "^3.0.2",
-    "staffa": "0.2.1",
+    "staffa": "0.3.1",
     "tsx": "^4.0.0",
     "vitest": "^4.1.7"
   },
