@@ -13,6 +13,9 @@ export default defineConfig({
         },
     },
     test: {
+        // *.spec.ts under tests/ are ShoTest (Playwright) browser tests, run via
+        // `npm run test:e2e`; vitest only owns the *.test.ts unit/integration tests.
+        include: ['**/*.test.ts'],
         environment: 'node',
         pool: 'forks',
         singleFork: true,

@@ -13,3 +13,7 @@ types
 .gdb_history
 .local*
 .lowlander_dashboard_password
+
+# ShoTest (Playwright) browser-test artifacts
+test-results/
+playwright-report/

@@ -136,7 +136,11 @@ function getIdForData(namespace: string, ...data: any): number {
 
     const countKey = new DataPack().write(namespace).toUint8Array();
     while(true) {
-        // Insert a new stream type
+        // Another worker may have won the race since we last checked
+        const existingPack = warpsocket.getKey(dataKey);
+        if (existingPack) {
+            return new DataPack(existingPack).readNumber();
+        }
         const countPack = warpsocket.getKey(countKey);
         const newCount = countPack ? new DataPack(countPack).readNumber() + 1 : 1;
         const newCountPack = new DataPack().write(newCount).toUint8Array();

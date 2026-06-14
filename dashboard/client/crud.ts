@@ -79,6 +79,22 @@ function defaultEditValue(type: TypeInfo): any {
 // ─── Inline field editors ─────────────────────────────────────────────────
 
 /**
+ * Draw the standard Staffa field chrome (a `.s-field` wrapper with a label)
+ * around a caller-supplied control. Composite editors (link/collection/record/
+ * optional/enum) use this so their labels match Staffa's own form fields.
+ *
+ * Staffa doesn't export its internal `drawField`, but the `.s-field` CSS class
+ * (and its `> label` rule) is registered globally, so reusing the class gives us
+ * the exact same styling.
+ */
+function drawFieldChrome(label: string | undefined, drawControl: () => void) {
+    A('div.s-field', () => {
+        if (label != null) A('label', () => A('#', label));
+        drawControl();
+    });
+}
+
+/**
  * Render an appropriate input widget for the given TypeInfo.
  * $bind.value holds/receives the edit-format value.
  */
@@ -130,10 +146,17 @@ function renderFieldEditor(
             renderRecordEditor(type, $bind, proxy, label, readOnly);
             return;
 
-        case 'or':
+        case 'or': {
+            // A union of literals is an enum → render as a segmented chooser.
+            const choices = type.choices ?? [];
+            if (choices.length && choices.every(c => c.kind === 'literal')) {
+                renderEnumEditor(choices, $bind, label, readOnly);
+                return;
+            }
             // General union: fall back to raw JSON textarea
             renderJsonEditor($bind, label, readOnly);
             return;
+        }
 
         case 'literal':
             // Read-only — show value as disabled text
@@ -152,15 +175,16 @@ function renderOptionalEditor(
     label?: string,
     readOnly = false,
 ) {
-    // $isSet tracks enabled state independently from $bind so the inner
-    // editor scope doesn't re-run (and lose focus) on every value change.
-    const $isSet = A.proxy({ v: $bind.value !== null && $bind.value !== undefined });
+    // $mode ('set' | 'undefined') tracks enabled state independently from $bind so
+    // the inner editor scope doesn't re-run (and lose focus) on every value change.
+    // Peek the initial value so the enclosing scope doesn't subscribe to it.
+    const initiallySet = A.peek(() => $bind.value !== null && $bind.value !== undefined);
+    const $mode = A.proxy({ v: initiallySet ? 'set' : 'undefined' });
 
-    // One-way sync: $isSet.v → $bind.value.
+    // One-way sync: $mode.v → $bind.value.
     // Uses A.peek to read $bind.value without subscribing (avoids circular loop).
     A(() => {
-        const on = $isSet.v;
-        if (on) {
+        if ($mode.v === 'set') {
             if (A.peek(() => $bind.value) === null || A.peek(() => $bind.value) === undefined) {
                 $bind.value = defaultEditValue(innerType);
             }
@@ -169,17 +193,57 @@ function renderOptionalEditor(
         }
     });
 
-    A('div', () => {
-        // Label + toggle row — checkbox uses A.ref so Aberdeen's bind= works
-        A('div', 'display:flex align-items:center gap:$2 mb:$1', () => {
-            if (label) A('span', 'fg:$s-fg-muted font-size:0.85em font-weight:600 text-transform:uppercase letter-spacing:0.04em', '#', label);
-            S.checkbox({ label: 'set', disabled: readOnly, bind: A.ref($isSet, 'v') });
+    drawFieldChrome(label, () => {
+        S.buttonChooser({
+            attrs: readOnly ? 'pointer-events:none opacity:0.6' : undefined,
+            options: { set: 'set', undefined: 'undefined' },
+            bind: A.ref($mode, 'v'),
         });
-        // Inner editor: depends on $isSet.v, NOT on $bind.value — so typing
+        // Inner editor: depends on $mode.v, NOT on $bind.value — so typing
         // in a text field inside the optional editor won't recreate the DOM.
         A(() => {
-            if (!$isSet.v) return;
+            if ($mode.v !== 'set') return;
             renderFieldEditor(innerType, $bind, proxy, undefined, readOnly);
+        });
+    });
+}
+
+/**
+ * Render a union of literal values (an enum) as a segmented buttonChooser.
+ * Each literal's JSON-serialised form (TypeInfo.literalValue) is used as the
+ * button id; the `undefined` literal becomes a "(none)" choice.
+ */
+function renderEnumEditor(
+    choices: TypeInfo[],
+    $bind: { value: any },
+    label?: string,
+    readOnly = false,
+) {
+    const idForValue = (v: any): string | null =>
+        v === null || v === undefined ? 'undefined' : JSON.stringify(v);
+    const valueForId = (id: string | null): any =>
+        id === null || id === 'undefined' ? null : JSON.parse(id);
+
+    const options: Record<string, string> = {};
+    let hasNone = false;
+    for (const c of choices) {
+        const id = c.literalValue ?? 'undefined';
+        if (id === 'undefined') { hasNone = true; options[id] = '(none)'; }
+        else options[id] = String(valueForId(id));
+    }
+
+    const $sel = A.proxy({ v: idForValue(A.peek(() => $bind.value)) });
+
+    // One-way: $sel.v → $bind.value (reads $sel only, so no circular loop).
+    A(() => { $bind.value = valueForId($sel.v); });
+
+    drawFieldChrome(label, () => {
+        S.buttonChooser({
+            attrs: readOnly ? 'pointer-events:none opacity:0.6' : undefined,
+            options,
+            bind: A.ref($sel, 'v'),
+            // Without an explicit "(none)" choice, allow clearing back to null.
+            allowDeselect: !hasNone,
         });
     });
 }
@@ -213,22 +277,28 @@ function renderLinkEditor(
         }
     });
 
+    // Load candidate records ONCE into a stable proxy. The outer scope has no
+    // reactive dependencies, so findRecords runs a single time; the inner scope
+    // copies the rows over once the RPC resolves. (Calling findRecords directly
+    // inside the autocomplete's reactive options() refetched on every settle and
+    // never produced a stable result — hence the perpetual "No matches".)
+    const $opts = A.proxy({ rows: [] as any[] });
+    A(() => {
+        const result = proxy.serverProxy.findRecords(linkedModel, '(primary)', { limit: 100 });
+        A(() => { if (result.value) $opts.rows = result.value.rows; });
+    });
+
     S.autocomplete({
         label,
         disabled: readOnly,
         allowCustom: false,
         placeholder: `Search ${linkedModel}…`,
         bind: A.ref($acStr, 'v'),
-        options: () => {
-            const result = proxy.serverProxy.findRecords(linkedModel, '(primary)', {
-                limit: 20,
-            });
-            if (!result.value) return [];
-            return result.value.rows.map((row: any) => ({
-                value: jsonStringify(row.pk),
-                label: `${linkedModel}: ${jsonStringify(row.pk)}`,
-            }));
-        },
+        // The autocomplete filters these client-side by label as the user types.
+        options: () => ($opts.rows as any[]).map((row: any) => ({
+            value: jsonStringify(row.pk),
+            label: jsonStringify(row.pk),
+        })),
     });
 }
 
@@ -241,24 +311,26 @@ function renderCollectionEditor(
 ) {
     const innerType = type.inner!;
 
-    // Read the initial value WITHOUT subscribing (A.peek) so this editor's
-    // host scope never re-runs when we write $bind.value back below.
-    const initVal = A.peek(() => $bind.value);
-    const initArr: any[] = Array.isArray(initVal) ? initVal : [];
-
-    // Stable per-item proxies: the item editors write to $items[i].v, which
-    // syncs back to $bind.value via a one-way reactive block.
-    const $items = A.proxy(initArr.map((v: any) => ({ v })));
+    // Build the local state WITHOUT subscribing the enclosing scope. Every read
+    // here (the initial value, its elements, the new proxy's length) must happen
+    // inside A.peek — otherwise, when this editor renders inside a reactive scope
+    // such as S.form's content, reading $items.length would subscribe that scope
+    // and pushing/removing items would re-run it, wiping this local state.
+    const [$items, $len] = A.peek(() => {
+        const initVal = $bind.value;
+        const initArr: any[] = Array.isArray(initVal) ? initVal : [];
+        // Stable per-item proxies: the item editors write to $items[i].v, which
+        // syncs back to $bind.value via a one-way reactive block.
+        const items = A.proxy(initArr.map((v: any) => ({ v })));
+        // Count proxy: drives add/remove re-renders without coupling to item values.
+        const len = A.proxy({ v: (items as any[]).length });
+        return [items, len] as const;
+    });
 
     // One-way sync: item proxies → $bind.value (never reads $bind.value so no loop)
     A(() => { $bind.value = ($items as any[]).map((item: any) => item.v); });
 
-    // Count proxy: drives add/remove re-renders without coupling to item values
-    const $len = A.proxy({ v: ($items as any[]).length });
-
-    A('div', () => {
-        if (label) A('label', 'display:block fg:$s-fg-muted font-size:0.85em font-weight:600 text-transform:uppercase letter-spacing:0.04em mb:$1', '#', label);
-
+    drawFieldChrome(label, () => {
         A('div.s-s.raised', 'display:flex flex-direction:column gap:$2 p:$2 r:$s-radius-lg border: 1px solid $s-border;', () => {
             A(() => {
                 const len: number = $len.v;
@@ -310,43 +382,58 @@ function renderRecordEditor(
 ) {
     const valueType = type.innerValue!;
 
-    // Read initial value without subscribing (see renderCollectionEditor).
-    const initVal = A.peek(() => $bind.value);
-    const initObj: Record<string, any> =
-        initVal && typeof initVal === 'object' && !Array.isArray(initVal) ? initVal : {};
+    // Build local state without subscribing the enclosing scope (see
+    // renderCollectionEditor for why every read must be inside A.peek).
+    const [$entries, $eLen] = A.peek(() => {
+        const initVal = $bind.value;
+        const initObj: Record<string, any> =
+            initVal && typeof initVal === 'object' && !Array.isArray(initVal) ? initVal : {};
+        // Stable per-entry proxies (same pattern as renderCollectionEditor).
+        const entries = A.proxy(Object.entries(initObj).map(([k, v]) => ({ k, v })));
+        const len = A.proxy({ v: (entries as any[]).length });
+        return [entries, len] as const;
+    });
 
-    // Stable per-entry proxies (same pattern as renderCollectionEditor)
-    const $entries = A.proxy(Object.entries(initObj).map(([k, v]) => ({ k, v })));
-    const $eLen = A.proxy({ v: ($entries as any[]).length });
-
+    // Entries with a blank key are skipped; on duplicate keys the last one wins.
     A(() => {
         const obj: Record<string, any> = {};
-        for (const e of ($entries as any[])) obj[e.k] = e.v;
+        for (const e of ($entries as any[])) {
+            if (e.k === '') continue;
+            obj[e.k] = e.v;
+        }
         $bind.value = obj;
     });
 
-    A('div', () => {
-        if (label) A('label', 'display:block fg:$s-fg-muted font-size:0.85em font-weight:600 text-transform:uppercase letter-spacing:0.04em mb:$1', '#', label);
-
-        A('div.s-s.raised', 'display:flex flex-direction:column gap:$2 p:$2 r:$s-radius-lg border: 1px solid $s-border;', () => {
+    drawFieldChrome(label, () => {
+        A('div.s-s.raised', 'display:flex flex-direction:column gap:$4 p:$2 r:$s-radius-lg border: 1px solid $s-border;', () => {
             A(() => {
                 const len: number = $eLen.v;
                 if (len === 0) A('span', 'fg:$s-fg-faint font-size:0.9em', '#(empty)');
                 for (let i = 0; i < len; i++) {
                     const idx = i;
-                    A('div', 'display:flex gap:$2 align-items:flex-start', () => {
-                        A('code', 'flex-shrink:0 font-size:0.85em mt:$3 fg:$s-fg-muted', '#', ($entries as any)[idx].k);
-                        A('div', 'flex:1', () => {
+                    A('div', 'display:flex flex-direction:column gap:$1', () => {
+                        // Key row: key field + delete button
+                        A('div', 'display:flex gap:$2 align-items:center', () => {
+                            if (readOnly) {
+                                A('code', 'flex:1 font-size:0.85em fg:$s-fg-muted', '#', A.peek(() => ($entries as any)[idx].k));
+                            } else {
+                                A('div', 'flex:1', () => {
+                                    S.textline({ placeholder: 'key', bind: A.ref(($entries as any)[idx], 'k') });
+                                });
+                            }
+                            if (!readOnly) {
+                                S.button({
+                                    text: '×', attrs: '.outlined.danger .small flex-shrink:0', click: () => {
+                                    ($entries as any[]).splice(idx, 1);
+                                    $eLen.v = ($entries as any[]).length;
+                                }});
+                            }
+                        });
+                        // Value row
+                        A('div', () => {
                             const $item = A.ref(($entries as any)[idx], 'v');
                             renderFieldEditor(valueType, $item, proxy, undefined, readOnly);
                         });
-                        if (!readOnly) {
-                            S.button({
-                                text: '×', attrs: '.outlined.danger .small flex-shrink:0 mt:$3', click: () => {
-                                ($entries as any[]).splice(idx, 1);
-                                $eLen.v = ($entries as any[]).length;
-                            }});
-                        }
                     });
                 }
             });
@@ -355,10 +442,8 @@ function renderRecordEditor(
                 S.button({
                     text: '+ Add entry',
                     attrs: '.tonal .small',
-                    click: async () => {
-                        const newKey = await S.prompt('Key name:');
-                        if (!newKey || ($entries as any[]).some((e: any) => e.k === newKey)) return;
-                        ($entries as any[]).push({ k: newKey, v: defaultEditValue(valueType) });
+                    click: () => {
+                        ($entries as any[]).push({ k: '', v: defaultEditValue(valueType) });
                         $eLen.v = ($entries as any[]).length;
                     },
                 });
@@ -394,6 +479,58 @@ function renderJsonEditor($bind: { value: any }, label?: string, readOnly = fals
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
+function openFormDialog(
+    proxy: ServerProxy,
+    header: string,
+    fields: FieldInfo[],
+    initValue: (f: FieldInfo) => any,
+    isReadOnly: (f: FieldInfo) => boolean,
+    submitText: string,
+    onSubmit: (boxes: Record<string, { v: any }>, close: () => void) => Promise<void>,
+) {
+    const boxes: Record<string, { v: any }> = {};
+    for (const f of fields) {
+        boxes[f.name] = A.proxy({ v: initValue(f) });
+    }
+
+    const $status = A.proxy({ saving: false });
+
+    S.dialog({
+        header,
+        attrs: "width:800px",
+        content: (close) => {
+            S.form({
+                content: () => {
+                    for (const f of fields) {
+                        renderFieldEditor(f.type, A.ref(boxes[f.name]!, 'v'), proxy, f.name, isReadOnly(f));
+                    }
+                },
+                layout: "grid",
+                actions: () => {
+                    S.button({ text: 'Cancel', attrs: '.outlined.neutral', click: close });
+                    A(() => {
+                        S.button({
+                            text: submitText,
+                            type: 'button',
+                            disabled: $status.saving,
+                            click: async () => {
+                                $status.saving = true;
+                                try {
+                                    await onSubmit(boxes, close);
+                                } catch (err: any) {
+                                    S.toast({ message: err?.message ?? String(err), type: 'danger' });
+                                } finally {
+                                    $status.saving = false;
+                                }
+                            },
+                        });
+                    });
+                },
+            });
+        },
+    });
+}
+
 export function openCreateModal(
     proxy: ServerProxy,
     modelName: string,
@@ -401,52 +538,21 @@ export function openCreateModal(
     onCreated?: (pk: any) => void,
 ) {
     const editableFields = fields.filter(f => f.type.kind !== 'id');
-    // Each field value lives in a real Aberdeen proxy box, so leaf editors can
-    // bind to A.ref(box, 'v') — Aberdeen's bind= requires a genuine proxy.
-    const boxes: Record<string, { v: any }> = {};
-    for (const f of editableFields) {
-        boxes[f.name] = A.proxy({ v: defaultEditValue(f.type) });
-    }
-
-    const $status = A.proxy({ saving: false, error: '' });
-
-    S.dialog({
-        header: `New ${modelName}`,
-        content: (close) => {
-            S.form({
-                content: () => {
-                    for (const f of editableFields) {
-                        renderFieldEditor(f.type, A.ref(boxes[f.name]!, 'v'), proxy, f.name, false);
-                    }
-                },
-                actions: () => {
-                    S.button({
-                        text: 'Create',
-                        type: 'button',
-                        disabled: A.peek(() => $status.saving),
-                        click: async () => {
-                            $status.saving = true;
-                            $status.error = '';
-                            try {
-                                const payload: Record<string, any> = {};
-                                for (const f of editableFields) payload[f.name] = boxes[f.name]!.v;
-                                const pk = await proxy.serverProxy.createRecord(modelName, payload);
-                                close();
-                                onCreated?.(pk);
-                            } catch (err: any) {
-                                $status.error = err?.message ?? String(err);
-                                $status.saving = false;
-                            }
-                        },
-                    });
-                    S.button({ text: 'Cancel', attrs: '.outlined.neutral', click: close });
-                    A(() => {
-                        if ($status.error) A('span', 'fg:$s-danger font-size:0.85em', '#', $status.error);
-                    });
-                },
-            });
+    openFormDialog(
+        proxy,
+        `New ${modelName}`,
+        editableFields,
+        (f) => defaultEditValue(f.type),
+        () => false,
+        'Create',
+        async (boxes, close) => {
+            const payload: Record<string, any> = {};
+            for (const f of editableFields) payload[f.name] = boxes[f.name]!.v;
+            const pk = await proxy.serverProxy.createRecord(modelName, payload).promise;
+            close();
+            onCreated?.(pk);
         },
-    });
+    );
 }
 
 export function openEditModal(
@@ -457,53 +563,23 @@ export function openEditModal(
     currentValues: Record<string, any>,
     onSaved?: () => void,
 ) {
-    // Build per-field reactive boxes initialised from current values
-    const boxes: Record<string, { v: any }> = {};
-    for (const f of fields) {
-        boxes[f.name] = A.proxy({ v: toEditValue(f.type, currentValues[f.name]) });
-    }
-
-    const $status = A.proxy({ saving: false, error: '' });
-
-    S.dialog({
-        header: `Edit ${modelName}`,
-        content: (close) => {
-            S.form({
-                content: () => {
-                    for (const f of fields) {
-                        renderFieldEditor(f.type, A.ref(boxes[f.name]!, 'v'), proxy, f.name, f.isPk);
-                    }
-                },
-                actions: () => {
-                    S.button({
-                        text: 'Save',
-                        type: 'button',
-                        disabled: A.peek(() => $status.saving),
-                        click: async () => {
-                            $status.saving = true;
-                            $status.error = '';
-                            try {
-                                const payload: Record<string, any> = {};
-                                for (const f of fields) {
-                                    if (!f.isPk) payload[f.name] = boxes[f.name]!.v;
-                                }
-                                await proxy.serverProxy.updateRecord(modelName, pk, payload);
-                                close();
-                                onSaved?.();
-                            } catch (err: any) {
-                                $status.error = err?.message ?? String(err);
-                                $status.saving = false;
-                            }
-                        },
-                    });
-                    S.button({ text: 'Cancel', attrs: '.outlined.neutral', click: close });
-                    A(() => {
-                        if ($status.error) A('span', 'fg:$s-danger font-size:0.85em', '#', $status.error);
-                    });
-                },
-            });
+    openFormDialog(
+        proxy,
+        `Edit ${modelName}`,
+        fields,
+        (f) => toEditValue(f.type, currentValues[f.name]),
+        (f) => f.isPk,
+        'Save',
+        async (boxes, close) => {
+            const payload: Record<string, any> = {};
+            for (const f of fields) {
+                if (!f.isPk) payload[f.name] = boxes[f.name]!.v;
+            }
+            await proxy.serverProxy.updateRecord(modelName, pk, payload).promise;
+            close();
+            onSaved?.();
         },
-    });
+    );
 }
 
 export function openDeleteConfirm(
@@ -535,7 +611,7 @@ export function openDeleteConfirm(
                         $status.deleting = true;
                         $status.error = '';
                         try {
-                            await proxy.serverProxy.deleteRecord(modelName, pk);
+                            await proxy.serverProxy.deleteRecord(modelName, pk).promise;
                             close();
                             onDeleted?.();
                         } catch (err: any) {
