@@ -30,6 +30,10 @@ npm run example
 
 Opens at http://localhost:8080 with the Aberdeen dashboard at http://localhost:8080/_dashboard (password printed to console on start).
 
+This is what the example dashboard looks like:
+
+![dashboard screenshot](dashboard_screenshot.png)
+
 ## Tutorial
 
 ### Project Setup
